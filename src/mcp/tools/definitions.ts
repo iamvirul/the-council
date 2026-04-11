@@ -77,3 +77,14 @@ export const getCouncilStateSchema = {
       'Specific session ID (UUID) to retrieve. Omit to list all active sessions.',
     ),
 };
+
+export const getSupervisorVerdictsSchema = {
+  session_id: z
+    .string()
+    .uuid()
+    .describe('Session ID (UUID) to retrieve Supervisor verdicts for.'),
+  flagged_only: z
+    .boolean()
+    .optional()
+    .describe('When true, return only verdicts where approved is false. Default: false.'),
+};
