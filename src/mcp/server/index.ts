@@ -96,8 +96,8 @@ export async function startServer(): Promise<void> {
           try {
             stateStore.recordAgentCall(session_id, 'executor');
             stateStore.recordExecutorResult(session_id, response);
-          } catch {
-            // Session may not exist — non-fatal
+          } catch (stateErr) {
+            logger.warn({ session_id, err: stateErr }, 'Failed to record executor result to session — non-fatal');
           }
         }
 
@@ -125,8 +125,8 @@ export async function startServer(): Promise<void> {
           try {
             stateStore.recordAgentCall(session_id, 'aide');
             stateStore.recordAideResult(session_id, response);
-          } catch {
-            // Session may not exist — non-fatal
+          } catch (stateErr) {
+            logger.warn({ session_id, err: stateErr }, 'Failed to record aide result to session — non-fatal');
           }
         }
 
