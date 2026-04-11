@@ -106,21 +106,17 @@ sequenceDiagram
 
 **Requirements:** Node.js 22+
 
-### Option A - npx (no install)
+### One-liner (macOS and Linux)
 
 ```bash
-npx -y council-mcp
+curl -fsSL https://raw.githubusercontent.com/iamvirul/the-council/main/install.sh | bash
 ```
 
-### Option B - global install
+This installs nothing globally. It adds the MCP server entry to your Claude config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `~/.config/Claude/claude_desktop_config.json` on Linux) and leaves everything else in the file untouched. Restart Claude Code after running it.
 
-```bash
-npm install -g council-mcp
-```
+### Manual setup
 
-### Connect to Claude Code
-
-Add this to your Claude Code MCP config (`~/.claude/claude_desktop_config.json` or your project `.mcp.json`):
+Add this to your Claude Code MCP config:
 
 ```json
 {
