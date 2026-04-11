@@ -50,6 +50,16 @@ export const ExecutorResponseSchema = z.object({
   next_step: z.string().max(500).optional(),
 });
 
+export const SupervisorVerdictSchema = z.object({
+  subject: z.string().max(200),
+  subject_type: z.enum(['executor_step', 'aide_task']),
+  approved: z.boolean(),
+  confidence: z.enum(['high', 'medium', 'low']),
+  // Cap flags — prevents an injected Supervisor from flooding logs
+  flags: z.array(z.string().max(500)).max(10),
+  recommendation: z.string().max(2_000),
+});
+
 export const AideResponseSchema = z.object({
   task_id: z.string().max(200),
   status: z.enum(['completed', 'failed', 'needs_clarification']),

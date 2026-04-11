@@ -1,6 +1,6 @@
 // Domain types — no imports from outside domain/
 
-export type AgentRole = 'chancellor' | 'executor' | 'aide';
+export type AgentRole = 'chancellor' | 'executor' | 'aide' | 'supervisor';
 export type SessionPhase = 'planning' | 'executing' | 'complete' | 'failed';
 
 // ─── Agent response shapes ────────────────────────────────────────────────────
@@ -48,6 +48,15 @@ export interface ExecutorResponse {
   next_step?: string;
 }
 
+export interface SupervisorVerdict {
+  subject: string;
+  subject_type: 'executor_step' | 'aide_task';
+  approved: boolean;
+  confidence: 'high' | 'medium' | 'low';
+  flags: string[];
+  recommendation: string;
+}
+
 export interface AideResponse {
   task_id: string;
   status: 'completed' | 'failed' | 'needs_clarification';
@@ -73,6 +82,7 @@ export interface CouncilSession {
     results: ExecutorResponse[];
   };
   aide_results: AideResponse[];
+  supervisor_verdicts: SupervisorVerdict[];
   metrics: {
     total_agent_calls: number;
     agents_invoked: AgentRole[];
@@ -87,7 +97,8 @@ export type CouncilErrorCode =
   | 'INVALID_JSON_RESPONSE'
   | 'SESSION_NOT_FOUND'
   | 'ORCHESTRATION_FAILED'
-  | 'AGENT_PARSE_ERROR';
+  | 'AGENT_PARSE_ERROR'
+  | 'SUPERVISOR_ERROR';
 
 export class CouncilError extends Error {
   constructor(
