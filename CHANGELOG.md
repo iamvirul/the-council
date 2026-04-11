@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-12
+
+### Fixed
+- Release workflow now reconfigures npm registry to `npm.pkg.github.com` before publishing to GitHub Packages, fixing `ENEEDAUTH` on the GitHub Packages publish step
+
 ## [0.1.1] - 2026-04-12
 
 ### Added
@@ -42,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/iamvirul/the-council/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/iamvirul/the-council/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/iamvirul/the-council/releases/tag/v0.1.0
