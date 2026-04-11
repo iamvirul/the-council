@@ -50,13 +50,18 @@ jobs:
       - name: Extract changelog for this release
         id: changelog
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          # Use git log between tags as the release body
-          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
-          if [ -z "$PREV_TAG" ]; then
-            NOTES=$(git log --pretty=format:"- %s" HEAD)
-          else
-            NOTES=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD")
+          VERSION="${GITHUB_REF_NAME#v}"  # strip leading 'v'
+          # Extract the block for this version from CHANGELOG.md:
+          # Matches from "## [X.Y.Z]" down to (but not including) the next "## ["
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            echo "⚠️  No CHANGELOG entry found for $VERSION — using git log as fallback"
+            PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | sed -n '2p')
+            if [ -z "$PREV_TAG" ]; then
+              NOTES=$(git log --pretty=format:"- %s" HEAD)
+            else
+              NOTES=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD")
+            fi
           fi
           echo "notes<<EOF" >> "$GITHUB_OUTPUT"
           echo "$NOTES" >> "$GITHUB_OUTPUT"
@@ -67,8 +72,6 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: |
-            ## What's Changed
-
             ${{ steps.changelog.outputs.notes }}
 
             ---
