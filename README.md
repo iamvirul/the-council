@@ -106,13 +106,27 @@ sequenceDiagram
 
 **Requirements:** Node.js 22+
 
-### One-liner (macOS and Linux)
+### One-liner
 
+**macOS / Linux**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/iamvirul/the-council/main/install.sh | bash
 ```
 
-This installs nothing globally. It adds the MCP server entry to your Claude config file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `~/.config/Claude/claude_desktop_config.json` on Linux) and leaves everything else in the file untouched. Restart Claude Code after running it.
+**Windows (PowerShell)**
+```powershell
+irm https://raw.githubusercontent.com/iamvirul/the-council/main/install.ps1 | iex
+```
+
+Both scripts install nothing globally. They add the MCP server entry to your Claude config file and leave everything else untouched.
+
+| OS | Config file path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+
+Restart Claude Code after running the script.
 
 ### Manual setup
 

@@ -44,7 +44,7 @@ case "$(uname -s)" in
     CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
     ;;
   *)
-    die "Unsupported OS. On Windows, run this script in WSL or Git Bash."
+    die "Unsupported OS. On Windows, use install.ps1 instead: irm https://raw.githubusercontent.com/iamvirul/the-council/main/install.ps1 | iex"
     ;;
 esac
 
