@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write   # create GitHub release
   id-token: write   # npm provenance attestation
+  packages: write   # publish to GitHub Packages
 
 jobs:
   release:
@@ -95,3 +96,17 @@ jobs:
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to GitHub Packages
+        run: |
+          # GitHub Packages requires a scoped name — publish as @iamvirul/council-mcp
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.name = '@iamvirul/council-mcp';
+            pkg.publishConfig = { registry: 'https://npm.pkg.github.com' };
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
