@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Zod runtime schema validation on all agent JSON responses — prevents malformed or injected agent output from propagating to downstream agents
+- Hard cap of 10 delegated tasks per Executor response — prevents prompt-injection-driven Aide invocation amplification
+- UUID format validation on `session_id` and `task_id` MCP tool inputs
+- Max length limits added to `context` and `plan_context` tool input fields (previously unbounded)
+- Code fence extraction regex corrected — non-greedy match prevents incorrect JSON extraction from multi-fence responses
+- Silent `catch {}` blocks replaced with `logger.warn` — state recording failures now visible in logs
+- Pino async destination flushed on `beforeExit`, `uncaughtException`, and `unhandledRejection` — prevents log loss on crash
+
 ## [0.1.0] - 2026-04-11
 
 ### Added
