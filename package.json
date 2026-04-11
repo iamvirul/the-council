@@ -1,5 +1,5 @@
 {
-  "name": "@iamvirul/the-council",
+  "name": "council-mcp",
   "version": "0.1.0",
   "description": "Three-tier AI agent MCP orchestration system: Chancellor (Opus), Executor (Sonnet), Aide (Haiku)",
   "type": "module",

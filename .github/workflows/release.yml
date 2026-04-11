@@ -75,14 +75,14 @@ jobs:
             ${{ steps.changelog.outputs.notes }}
 
             ---
-            **Install:** `npm install @iamvirul/the-council`
+            **Install:** `npm install council-mcp`
             **Use in Claude Code MCP config:**
             ```json
             {
               "mcpServers": {
                 "the-council": {
                   "command": "npx",
-                  "args": ["-y", "@iamvirul/the-council"]
+                  "args": ["-y", "council-mcp"]
                 }
               }
             }
