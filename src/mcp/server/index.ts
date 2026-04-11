@@ -1,5 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../../../package.json') as { version: string };
 import { orchestrate } from '../../application/orchestrator/index.js';
 import { invokeChancellor } from '../../application/chancellor/agent.js';
 import { invokeExecutor } from '../../application/executor/agent.js';
@@ -37,7 +41,7 @@ function errorResponse(err: unknown) {
 export async function startServer(): Promise<void> {
   const server = new McpServer({
     name: 'the-council',
-    version: '0.1.0',
+    version,
   });
 
   // ── Tool: orchestrate ───────────────────────────────────────────────────────
