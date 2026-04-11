@@ -8,25 +8,23 @@ import type { CouncilSession } from '../../domain/models/types.js';
 
 // ─── Complexity heuristic ─────────────────────────────────────────────────────
 // Deterministic, no LLM call — avoids spending tokens on a meta-decision.
+// Word-boundary regex prevents 'create a list' from matching 'create'.
 
 type Complexity = 'trivial' | 'simple' | 'complex';
 
-const COMPLEX_KEYWORDS = [
-  'plan', 'design', 'architect', 'strategy', 'analyze', 'analyse',
-  'assess', 'risk', 'system', 'build', 'create', 'implement', 'develop',
-];
-
-const TRIVIAL_KEYWORDS = ['format', 'convert', 'transform', 'clean', 'list', 'count'];
+// Deliberately excludes generic words like 'build', 'create', 'implement' —
+// too common in simple requests and would over-trigger Chancellor analysis.
+const COMPLEX_PATTERN = /\b(plan|design|architect|strategy|analyze|analyse|assess|risk)\b/i;
+const TRIVIAL_PATTERN = /\b(format|convert|transform|clean|list|count)\b/i;
 
 function assessComplexity(problem: string): Complexity {
-  const lower = problem.toLowerCase();
   const wordCount = problem.split(/\s+/).length;
 
-  if (wordCount > 60 || COMPLEX_KEYWORDS.some((kw) => lower.includes(kw))) {
+  if (wordCount > 60 || COMPLEX_PATTERN.test(problem)) {
     return 'complex';
   }
 
-  if (wordCount < 15 && TRIVIAL_KEYWORDS.some((kw) => lower.includes(kw))) {
+  if (wordCount < 15 && TRIVIAL_PATTERN.test(problem)) {
     return 'trivial';
   }
 
@@ -90,7 +88,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       return {
         request_id,
         complexity,
-        result: buildResultSummary(stateStore.get(request_id)),
+        result: buildResultSummary(stateStore.get(request_id), startedAt),
         session: stateStore.get(request_id),
       };
     }
@@ -100,7 +98,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
     stateStore.recordAgentCall(request_id, 'chancellor');
 
     const chancellorPlan = await invokeChancellor({ problem });
-    session.chancellor_plan = chancellorPlan;
+    stateStore.setChancellorPlan(request_id, chancellorPlan); // go through store, not direct mutation
 
     logger.info(
       { request_id, steps: chancellorPlan.plan.length },
@@ -112,7 +110,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
     for (const step of chancellorPlan.plan) {
       logger.info({ request_id, step_id: step.id }, 'Executing plan step');
       stateStore.recordAgentCall(request_id, 'executor');
-      stateStore.get(request_id).executor_progress.current_step = step.id;
+      stateStore.setCurrentStep(request_id, step.id); // go through store, not direct mutation
 
       const execResult = await invokeExecutor({
         problem: step.description,
@@ -135,7 +133,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
 
       if (execResult.status === 'blocked') {
         logger.warn({ request_id, step_id: step.id, blockers: execResult.blockers }, 'Step blocked');
-        // Continue to next step rather than halting — partial completion is better than none
+        // Continue to next step — partial completion is better than halting
       }
     }
 
@@ -144,7 +142,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
     return {
       request_id,
       complexity,
-      result: buildResultSummary(stateStore.get(request_id)),
+      result: buildResultSummary(stateStore.get(request_id), startedAt),
       session: stateStore.get(request_id),
     };
   } catch (err) {
@@ -164,7 +162,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildResultSummary(session: CouncilSession): string {
+function buildResultSummary(session: CouncilSession, startedAt: number): string {
   const lines: string[] = [];
 
   if (session.chancellor_plan) {
@@ -190,8 +188,9 @@ function buildResultSummary(session: CouncilSession): string {
     lines.push('');
   }
 
+  const durationMs = Date.now() - startedAt;
   lines.push(`---`);
-  lines.push(`Session: ${session.request_id} | Agents: ${session.metrics.agents_invoked.join(', ')} | Duration: ${session.metrics.duration_ms ?? 0}ms`);
+  lines.push(`Session: ${session.request_id} | Agents: ${session.metrics.agents_invoked.join(', ')} | Duration: ${durationMs}ms`);
 
   return lines.join('\n');
 }
