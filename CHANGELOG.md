@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-12
+
+### Added
+- **Supervisor agent** (Claude Haiku 4.5) — reviews every Executor step result and Aide task output before they surface to the caller. Non-blocking: if the Supervisor errors, orchestration continues and a warning is logged.
+- **`get_supervisor_verdicts` MCP tool** — retrieve all Supervisor verdicts for a session, with optional `flagged_only` filter for quick triage
+- **Supervisor flags in result summary** — flagged outputs appear under a `## Supervisor Flags` section in the `orchestrate` result
+- **`supervisor` added to `AgentRole`** — session metrics now track Supervisor invocations alongside Chancellor, Executor, and Aide
+- **PR template** — standardised pull request checklist for contributions
+- **Issue templates** — bug report and feature request templates; security reports redirect to GitHub Security Advisories
+- **`CODEOWNERS`** — `@iamvirul` set as required reviewer on all files
+
 ## [0.1.2] - 2026-04-12
 
 ### Fixed
@@ -47,7 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/iamvirul/the-council/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/iamvirul/the-council/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/iamvirul/the-council/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/iamvirul/the-council/releases/tag/v0.1.0
