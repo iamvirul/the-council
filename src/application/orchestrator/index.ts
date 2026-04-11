@@ -1,6 +1,7 @@
 import { invokeChancellor } from '../chancellor/agent.js';
 import { invokeExecutor } from '../executor/agent.js';
 import { invokeAide } from '../aide/agent.js';
+import { invokeSupervisor } from '../supervisor/agent.js';
 import { stateStore } from '../../infra/state/council-state.js';
 import { logger } from '../../infra/logging/logger.js';
 import { CouncilError } from '../../domain/models/types.js';
@@ -54,8 +55,10 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       stateStore.setPhase(request_id, 'executing');
       stateStore.recordAgentCall(request_id, 'aide');
 
-      const aideResult = await invokeAide(crypto.randomUUID(), { problem });
+      const taskId = crypto.randomUUID();
+      const aideResult = await invokeAide(taskId, { problem });
       stateStore.recordAideResult(request_id, aideResult);
+      await superviseAideTask(request_id, problem, problem, taskId, aideResult.result);
       stateStore.complete(request_id, startedAt);
 
       return {
@@ -73,6 +76,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
 
       const execResult = await invokeExecutor({ problem });
       stateStore.recordExecutorResult(request_id, execResult);
+      await superviseExecutorStep(request_id, problem, problem, execResult.step_id, execResult.result);
 
       // Handle any Aide delegations from the Executor
       for (const task of execResult.delegated_tasks) {
@@ -80,6 +84,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
           stateStore.recordAgentCall(request_id, 'aide');
           const aideResult = await invokeAide(task.task_id, { problem: task.description });
           stateStore.recordAideResult(request_id, aideResult);
+          await superviseAideTask(request_id, problem, task.description, task.task_id, aideResult.result);
         }
       }
 
@@ -118,6 +123,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       });
 
       stateStore.recordExecutorResult(request_id, execResult);
+      await superviseExecutorStep(request_id, problem, step.description, execResult.step_id, execResult.result);
 
       // Handle Aide delegations
       for (const task of execResult.delegated_tasks) {
@@ -128,6 +134,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
             context: `Part of step: ${step.description}`,
           });
           stateStore.recordAideResult(request_id, aideResult);
+          await superviseAideTask(request_id, problem, task.description, task.task_id, aideResult.result);
         }
       }
 
@@ -160,6 +167,67 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
   }
 }
 
+// ─── Supervisor (non-blocking) ────────────────────────────────────────────────
+// Supervisor failure must never propagate — it is advisory only.
+
+async function superviseExecutorStep(
+  requestId: string,
+  problem: string,
+  stepDescription: string,
+  stepId: string,
+  output: string,
+): Promise<void> {
+  try {
+    stateStore.recordAgentCall(requestId, 'supervisor');
+    const verdict = await invokeSupervisor({
+      subject_id: stepId,
+      subject_type: 'executor_step',
+      original_problem: problem,
+      intent: stepDescription,
+      output,
+    });
+    stateStore.recordSupervisorVerdict(requestId, verdict);
+
+    if (!verdict.approved) {
+      logger.warn(
+        { request_id: requestId, step_id: stepId, flags: verdict.flags, recommendation: verdict.recommendation },
+        'Supervisor flagged executor step',
+      );
+    }
+  } catch (err) {
+    logger.warn({ request_id: requestId, step_id: stepId, err }, 'Supervisor failed — continuing without verdict');
+  }
+}
+
+async function superviseAideTask(
+  requestId: string,
+  problem: string,
+  taskDescription: string,
+  taskId: string,
+  output: string,
+): Promise<void> {
+  try {
+    stateStore.recordAgentCall(requestId, 'supervisor');
+    const verdict = await invokeSupervisor({
+      subject_id: taskId,
+      subject_type: 'aide_task',
+      original_problem: problem,
+      intent: taskDescription,
+      output,
+    });
+    stateStore.recordSupervisorVerdict(requestId, verdict);
+
+    if (!verdict.approved) {
+      logger.warn(
+        { request_id: requestId, task_id: taskId, flags: verdict.flags, recommendation: verdict.recommendation },
+        'Supervisor flagged aide task',
+      );
+    }
+  } catch (err) {
+    logger.warn({ request_id: requestId, task_id: taskId, err }, 'Supervisor failed — continuing without verdict');
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildResultSummary(session: CouncilSession, startedAt: number): string {
@@ -184,6 +252,16 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
     lines.push(`## Aide Outputs`);
     for (const r of session.aide_results) {
       lines.push(`**Task ${r.task_id}:** ${r.result}`);
+    }
+    lines.push('');
+  }
+
+  const flagged = session.supervisor_verdicts.filter(v => !v.approved);
+  if (flagged.length > 0) {
+    lines.push(`## Supervisor Flags`);
+    for (const v of flagged) {
+      lines.push(`- **${v.subject}** (${v.subject_type}): ${v.recommendation}`);
+      for (const f of v.flags) lines.push(`  - ${f}`);
     }
     lines.push('');
   }
