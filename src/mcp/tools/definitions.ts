@@ -20,6 +20,7 @@ export const consultChancellorSchema = {
     .describe('Problem requiring deep strategic analysis and planning.'),
   context: z
     .string()
+    .max(20_000)
     .optional()
     .describe('Additional background context to inform the analysis.'),
 };
@@ -32,12 +33,14 @@ export const executeWithExecutorSchema = {
     .describe('The implementation task for the Executor to carry out.'),
   plan_context: z
     .string()
+    .max(20_000)
     .optional()
     .describe('Chancellor plan JSON to provide strategic context.'),
   session_id: z
     .string()
+    .uuid()
     .optional()
-    .describe('Existing session ID to attach this execution to.'),
+    .describe('Existing session ID (UUID) to attach this execution to.'),
 };
 
 export const delegateToAideSchema = {
@@ -50,23 +53,27 @@ export const delegateToAideSchema = {
     ),
   task_id: z
     .string()
+    .uuid()
     .optional()
-    .describe('Unique task identifier for tracking. Auto-generated if omitted.'),
+    .describe('Unique task identifier (UUID). Auto-generated if omitted.'),
   context: z
     .string()
+    .max(5_000)
     .optional()
     .describe('Minimal context the Aide needs to complete the task.'),
   session_id: z
     .string()
+    .uuid()
     .optional()
-    .describe('Existing session ID to attach this result to.'),
+    .describe('Existing session ID (UUID) to attach this result to.'),
 };
 
 export const getCouncilStateSchema = {
   session_id: z
     .string()
+    .uuid()
     .optional()
     .describe(
-      'Specific session ID to retrieve. Omit to list all active sessions.',
+      'Specific session ID (UUID) to retrieve. Omit to list all active sessions.',
     ),
 };
