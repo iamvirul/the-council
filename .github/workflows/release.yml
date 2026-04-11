@@ -97,6 +97,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Setup Node for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          registry-url: https://npm.pkg.github.com
+
       - name: Publish to GitHub Packages
         run: |
           # GitHub Packages requires a scoped name — publish as @iamvirul/council-mcp
