@@ -1,6 +1,6 @@
 {
   "name": "council-mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Three-tier AI agent MCP orchestration system: Chancellor (Opus), Executor (Sonnet), Aide (Haiku)",
   "type": "module",
   "main": "dist/index.js",
