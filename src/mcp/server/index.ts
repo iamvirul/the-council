@@ -17,6 +17,7 @@ import {
   executeWithExecutorSchema,
   delegateToAideSchema,
   getCouncilStateSchema,
+  getSupervisorVerdictsSchema,
 } from '../tools/definitions.js';
 
 // ─── Error response helper ────────────────────────────────────────────────────
@@ -168,6 +169,27 @@ export async function startServer(): Promise<void> {
         };
       } catch (err) {
         logger.error({ err }, 'get_council_state tool error');
+        return errorResponse(err);
+      }
+    },
+  );
+
+  // ── Tool: get_supervisor_verdicts ───────────────────────────────────────────
+  server.tool(
+    'get_supervisor_verdicts',
+    'Retrieve Supervisor verdicts for a session. Use flagged_only to surface only outputs the Supervisor flagged as needing attention.',
+    getSupervisorVerdictsSchema,
+    async ({ session_id, flagged_only }) => {
+      try {
+        const session = stateStore.get(session_id);
+        const verdicts = flagged_only
+          ? session.supervisor_verdicts.filter((v) => !v.approved)
+          : session.supervisor_verdicts;
+        return {
+          content: [{ type: 'text', text: JSON.stringify(verdicts, null, 2) }],
+        };
+      } catch (err) {
+        logger.error({ err }, 'get_supervisor_verdicts tool error');
         return errorResponse(err);
       }
     },

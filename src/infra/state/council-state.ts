@@ -1,5 +1,5 @@
 // In-memory session store. Sessions live for the lifetime of the MCP server process.
-import type { CouncilSession, AgentRole, ExecutorResponse, AideResponse, SessionPhase, ChancellorResponse } from '../../domain/models/types.js';
+import type { CouncilSession, AgentRole, ExecutorResponse, AideResponse, SessionPhase, ChancellorResponse, SupervisorVerdict } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
 
 // Cap at 500 sessions — evict oldest when exceeded to prevent OOM.
@@ -26,6 +26,7 @@ class CouncilStateStore {
         results: [],
       },
       aide_results: [],
+      supervisor_verdicts: [],
       metrics: {
         total_agent_calls: 0,
         agents_invoked: [],
@@ -83,6 +84,11 @@ class CouncilStateStore {
   recordAideResult(requestId: string, result: AideResponse): void {
     const session = this.get(requestId);
     session.aide_results.push(result);
+  }
+
+  recordSupervisorVerdict(requestId: string, verdict: SupervisorVerdict): void {
+    const session = this.get(requestId);
+    session.supervisor_verdicts.push(verdict);
   }
 
   complete(requestId: string, startedAt: number): void {
