@@ -1,12 +1,14 @@
 # The Council
 
-[![npm version](https://img.shields.io/npm/v/@iamvirul/the-council)](https://www.npmjs.com/package/@iamvirul/the-council)
+[![npm version](https://img.shields.io/npm/v/council-mcp)](https://www.npmjs.com/package/council-mcp)
 [![CI](https://github.com/iamvirul/the-council/actions/workflows/ci.yml/badge.svg)](https://github.com/iamvirul/the-council/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> A three-tier AI agent orchestration system that runs inside Claude Code — no API key, no extra setup.
+A three-tier AI agent orchestration system that runs inside Claude Code. No separate API key needed.
 
-The Council is a TypeScript [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that exposes a hierarchy of three specialised Claude agents — **Chancellor**, **Executor**, and **Aide** — accessible directly inside Claude Code. When you hand it a problem, The Council automatically assesses complexity and routes it to the right agent tier: a trivial formatting task goes straight to the fast, cost-efficient Aide; a medium implementation task goes to the Executor; a complex architectural problem first passes through the Chancellor for strategic planning before the Executor drives implementation step-by-step, delegating sub-tasks down to the Aide. All agents run as sub-agents of your existing Claude Code session — no separate Anthropic API key is needed.
+The Council is a TypeScript [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server with three Claude agents: **Chancellor**, **Executor**, and **Aide**. When you give it a problem, it figures out the complexity and sends it to the right agent. A formatting task goes straight to the fast Aide (Haiku). A coding task goes to the Executor (Sonnet). A design or architecture problem first goes through the Chancellor (Opus) for a plan, then the Executor runs each step, delegating simple sub-tasks to the Aide.
+
+All agents run as sub-agents of your existing Claude Code session, so no extra authentication is needed.
 
 ---
 
@@ -33,23 +35,23 @@ flowchart TD
     CC --> U
 ```
 
-**Complexity routing** is deterministic — no extra LLM call:
+Complexity routing uses a fast keyword + word count check. No extra LLM call.
 
 | Signal | Complexity | Agents invoked |
 |---|---|---|
-| Word count > 60, or keywords: `plan`, `design`, `architect`, `strategy`, `analyze`, `assess`, `risk` | Complex | Chancellor → Executor → Aide (as needed) |
-| Word count 15–60, no strong signal | Simple | Executor → Aide (as needed) |
+| Word count > 60, or keywords: `plan`, `design`, `architect`, `strategy`, `analyze`, `assess`, `risk` | Complex | Chancellor -> Executor -> Aide (as needed) |
+| Word count 15-60, no strong signal | Simple | Executor -> Aide (as needed) |
 | Word count < 15, keywords: `format`, `convert`, `transform`, `clean`, `list`, `count` | Trivial | Aide only |
 
 ---
 
 ## Agent Roles
 
-| Agent | Model | Role | Tools available | Max turns |
+| Agent | Model | Role | Tools | Max turns |
 |---|---|---|---|---|
-| **Chancellor** | `claude-opus-4-6` | Strategic architect: deep problem analysis, step-by-step planning, risk assessment, delegation strategy | None (pure reasoning) | 3 |
-| **Executor** | `claude-sonnet-4-6` | Tactical implementer: executes each plan step, produces code/designs/solutions, delegates simple sub-tasks to the Aide | `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep` | 10 |
-| **Aide** | `claude-haiku-4-5` | Support specialist: formatting, data transformation, text processing, simple utilities | None (pure reasoning) | 3 |
+| **Chancellor** | `claude-opus-4-6` | Deep analysis, planning, risk assessment | None (pure reasoning) | 3 |
+| **Executor** | `claude-sonnet-4-6` | Implementation, code, delegation | `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep` | 10 |
+| **Aide** | `claude-haiku-4-5` | Formatting, data transformation, utilities | None (pure reasoning) | 3 |
 
 ---
 
@@ -66,7 +68,7 @@ sequenceDiagram
 
     User->>CC: "Design a microservices architecture for my e-commerce app"
     CC->>ORC: orchestrate(problem)
-    ORC->>ORC: assessComplexity() → complex
+    ORC->>ORC: assessComplexity() -> complex
 
     ORC->>CH: invokeChancellor(problem)
     CH-->>ORC: ChancellorResponse<br/>(analysis, plan[], risks[], delegation_strategy)
@@ -88,76 +90,74 @@ sequenceDiagram
 
 ---
 
-## MCP Tools Reference
+## MCP Tools
 
 | Tool | Description | Key inputs |
 |---|---|---|
-| `orchestrate` | Route a problem through The Council. Complexity is assessed automatically; the correct agent tier is invoked. | `problem` (string, max 10 000 chars) |
-| `consult_chancellor` | Invoke the Chancellor directly for deep strategic analysis. Returns a structured plan with steps, risks, assumptions, and success metrics. | `problem`, `context?` |
-| `execute_with_executor` | Invoke the Executor directly for implementation. The Executor has access to file and shell tools. | `task`, `plan_context?`, `session_id?` |
-| `delegate_to_aide` | Invoke the Aide directly for simple, well-defined tasks: formatting, transformation, utilities. | `task` (max 2 000 chars), `task_id?`, `context?`, `session_id?` |
-| `get_council_state` | Retrieve the full state of a session by ID, or list all active sessions with summary info. | `session_id?` |
+| `orchestrate` | Route a problem through The Council. Complexity is assessed automatically. | `problem` (string, max 10 000 chars) |
+| `consult_chancellor` | Invoke the Chancellor directly for deep strategic analysis and a structured plan. | `problem`, `context?` |
+| `execute_with_executor` | Invoke the Executor directly for implementation. Has file and shell tool access. | `task`, `plan_context?`, `session_id?` |
+| `delegate_to_aide` | Invoke the Aide directly for simple, well-defined tasks. | `task` (max 2 000 chars), `task_id?`, `context?`, `session_id?` |
+| `get_council_state` | Retrieve session state by ID, or list all active sessions. | `session_id?` |
 
 ---
 
-## Installation & Setup
+## Installation
 
 **Requirements:** Node.js 22+
 
-### Option A — npx (no install required)
+### Option A - npx (no install)
 
 ```bash
-npx -y @iamvirul/the-council
+npx -y council-mcp
 ```
 
-### Option B — global install
+### Option B - global install
 
 ```bash
-npm install -g @iamvirul/the-council
+npm install -g council-mcp
 ```
 
 ### Connect to Claude Code
 
-Add the following to your Claude Code MCP configuration (`~/.claude/claude_desktop_config.json` or your project-level `.mcp.json`):
+Add this to your Claude Code MCP config (`~/.claude/claude_desktop_config.json` or your project `.mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "the-council": {
       "command": "npx",
-      "args": ["-y", "@iamvirul/the-council"]
+      "args": ["-y", "council-mcp"]
     }
   }
 }
 ```
 
-Restart Claude Code. The Council's tools will appear automatically.
+Restart Claude Code and the tools will appear.
 
-> **No API key required.** The Council runs as a sub-agent inside your existing Claude Code session and inherits its authentication. No separate `ANTHROPIC_API_KEY` configuration is needed.
+**No API key needed.** The Council runs inside your existing Claude Code session and inherits its authentication.
 
 ---
 
 ## Usage Examples
 
-Once The Council is connected, ask Claude Code naturally:
-
-### 1. Trivial — formatting
+### Trivial - formatting
 
 > "Use The Council to format this JSON into a clean, human-readable structure."
 
-The Orchestrator detects a trivial task and routes it directly to the **Aide** (Haiku 4.5). Fast and cost-efficient.
+Routes to the **Aide** (Haiku 4.5). Fast and cheap.
 
-### 2. Strategic — architecture design
+### Complex - architecture design
 
 > "Use The Council to design a microservices architecture for my e-commerce app."
 
-The Orchestrator detects a complex problem and invokes the **Chancellor** (Opus 4.6) for analysis and planning. Each plan step is then executed by the **Executor** (Sonnet 4.6), which delegates any simple sub-tasks to the **Aide**.
+Routes to the **Chancellor** (Opus 4.6) for analysis and planning. Each plan step runs through the **Executor** (Sonnet 4.6), which delegates simple sub-tasks to the **Aide**.
 
-### 3. Direct consultation — risk analysis
+### Direct consultation - risk analysis
 
 > "Consult the Chancellor about the risks in migrating our API from REST to GraphQL."
 
-Uses the `consult_chancellor` tool directly, bypassing orchestration. You receive a structured `ChancellorResponse` with `analysis`, `risks[]`, `assumptions[]`, `success_metrics[]`, and `recommendations[]`.
+Calls `consult_chancellor` directly, skipping orchestration. Returns a structured `ChancellorResponse` with `analysis`, `risks[]`, `assumptions[]`, `success_metrics[]`, and `recommendations[]`.
 
 ---
 
@@ -176,7 +176,7 @@ stateDiagram-v2
     failed --> [*]
 ```
 
-Session state is available at any time via the `get_council_state` tool. Each session records:
+Use `get_council_state` at any point to inspect a session. Each session tracks:
 - Phase (`planning` / `executing` / `complete` / `failed`)
 - Chancellor plan (if invoked)
 - Executor step results
@@ -193,29 +193,29 @@ cd the-council
 
 npm install
 
-npm run dev         # run with tsx — no compile step needed
+npm run dev         # run with tsx, no compile step
 npm run build       # compile TypeScript to dist/
-npm run type-check  # TypeScript check only, no emit
+npm run type-check  # TypeScript check only
 npm test            # run tests with vitest
-npm run test:watch  # vitest in watch mode
+npm run test:watch  # vitest watch mode
 ```
 
 ### Project structure
 
 ```
 src/
-  domain/           # Pure types, constants, error classes — no I/O
-    models/         # types.ts — AgentRole, SessionPhase, response shapes
-    constants/      # index.ts — model IDs, MAX_TURNS, system prompts
-  application/      # Use cases and agent invocation logic
+  domain/           # Pure types, constants, error classes - no I/O
+    models/         # types.ts, schemas.ts - response shapes and Zod validators
+    constants/      # index.ts - model IDs, MAX_TURNS, system prompts
+  application/      # Agent invocation and orchestration logic
     orchestrator/   # Complexity assessment + full orchestration flow
     chancellor/     # Chancellor agent wrapper
     executor/       # Executor agent wrapper
     aide/           # Aide agent wrapper
   infra/            # External dependencies
-    agent-sdk/      # runner.ts — wraps Claude Agent SDK query()
-    state/          # In-process session state store
-    logging/        # pino structured logger
+    agent-sdk/      # runner.ts - wraps Claude Agent SDK query()
+    state/          # In-process session state store (LRU, 500 session cap)
+    logging/        # pino structured logger (stderr only)
   mcp/
     server/         # MCP server setup, tool registration, lifecycle
     tools/          # Zod schemas for all tool inputs
@@ -223,16 +223,17 @@ src/
 
 ---
 
-## Release Process
+## Release
 
-1. Bump the version in `package.json`.
-2. Commit and tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
-3. GitHub Actions picks up the tag, runs `prepublishOnly` (`type-check` + `build`), and publishes to npm automatically.
+1. Bump version in `package.json`.
+2. Update `CHANGELOG.md` - move Unreleased entries under the new version heading.
+3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`
+4. GitHub Actions builds, creates a GitHub Release, and publishes to npm.
 
-To enable publishing, add your `NPM_TOKEN` as a repository secret in **GitHub → Settings → Secrets and variables → Actions**.
+To enable npm publishing, add your `NPM_TOKEN` as a repository secret under **Settings -> Secrets and variables -> Actions**.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT - see [LICENSE](LICENSE).
