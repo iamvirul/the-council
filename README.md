@@ -1,6 +1,7 @@
 # The Council
 
 [![npm version](https://img.shields.io/npm/v/council-mcp)](https://www.npmjs.com/package/council-mcp)
+[![GitHub Packages](https://img.shields.io/badge/GitHub%20Packages-%40iamvirul%2Fcouncil--mcp-blue?logo=github)](https://github.com/iamvirul/the-council/pkgs/npm/council-mcp)
 [![CI](https://github.com/iamvirul/the-council/actions/workflows/ci.yml/badge.svg)](https://github.com/iamvirul/the-council/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -146,6 +147,15 @@ Add this to your Claude Code MCP config:
 Restart Claude Code and the tools will appear.
 
 **No API key needed.** The Council runs inside your existing Claude Code session and inherits its authentication.
+
+### Registries
+
+The package is published to two registries on every release:
+
+| Registry | Package |
+|---|---|
+| [npm](https://www.npmjs.com/package/council-mcp) | `council-mcp` |
+| [GitHub Packages](https://github.com/iamvirul/the-council/pkgs/npm/council-mcp) | `@iamvirul/council-mcp` |
 
 ---
 

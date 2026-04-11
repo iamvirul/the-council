@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Published to GitHub Packages as `@iamvirul/council-mcp` in addition to npm — package now appears in the GitHub repository sidebar
+
 ### Security
 - Zod runtime schema validation on all agent JSON responses — prevents malformed or injected agent output from propagating to downstream agents
 - Hard cap of 10 delegated tasks per Executor response — prevents prompt-injection-driven Aide invocation amplification
