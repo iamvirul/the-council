@@ -1,0 +1,40 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Verify package is publishable
+        run: npm pack --dry-run
