@@ -1,5 +1,6 @@
 import { runAgent } from '../../infra/agent-sdk/runner.js';
 import { AIDE_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS } from '../../domain/constants/index.js';
+import { AideResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, AideResponse } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
 import { logger } from '../../infra/logging/logger.js';
@@ -20,16 +21,18 @@ export async function invokeAide(
     maxTurns: opts.max_turns ?? MAX_TURNS.AIDE,
   });
 
-  const cleaned = raw.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '').trim();
+  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  const cleaned = fenceMatch ? fenceMatch[1].trim() : raw.trim();
 
   try {
-    const parsed = JSON.parse(cleaned) as AideResponse;
-    logger.debug({ task_id: taskId, status: parsed.status }, 'Aide response parsed');
+    const json: unknown = JSON.parse(cleaned);
+    const parsed = AideResponseSchema.parse(json);
+    logger.debug({ task_id: taskId, status: parsed.status }, 'Aide response parsed and validated');
     return parsed;
   } catch (err) {
-    logger.error({ raw: raw.slice(0, 500), err }, 'Failed to parse Aide JSON response');
+    logger.error({ raw: raw.slice(0, 500), err }, 'Failed to parse/validate Aide response');
     throw new CouncilError(
-      'Aide returned invalid JSON',
+      'Aide returned an invalid or schema-violating response',
       'INVALID_JSON_RESPONSE',
       'aide',
       err,
