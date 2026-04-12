@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-12
+
+### Fixed
+- Replace `@anthropic-ai/claude-agent-sdk` with direct `claude` CLI subprocess calls — eliminates 401 auth errors for users authenticated via Claude.ai OAuth (no separate API key needed)
+- Use `--system-prompt-file` instead of `--system-prompt` CLI arg — prevents `exit 1` failures caused by long system prompts with XML tags and special characters
+- Startup check fails fast with a clear message if `claude` CLI is not in PATH and no `ANTHROPIC_API_KEY` is set
+- `install.sh` and `install.ps1` now detect the `claude` binary location and add its directory to the MCP server PATH automatically
+
 ## [0.2.0] - 2026-04-12
 
 ### Added
@@ -58,7 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/iamvirul/the-council/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/iamvirul/the-council/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/iamvirul/the-council/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/iamvirul/the-council/compare/v0.1.0...v0.1.1
