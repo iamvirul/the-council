@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-04-13
+
+### Changed
+- README diagrams replaced with hosted images — architecture, orchestration flow, and session lifecycle diagrams now render correctly on all platforms including GitHub, npm, and PyPI mirrors
+
 ## [0.2.2] - 2026-04-13
 
 ### Fixed
@@ -73,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/iamvirul/the-council/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/iamvirul/the-council/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/iamvirul/the-council/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/iamvirul/the-council/compare/v0.1.2...v0.2.0
