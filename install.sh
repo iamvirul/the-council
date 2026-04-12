@@ -76,34 +76,37 @@ else
   echo "Using existing Claude Code session via CLI (no API key needed)."
 fi
 
-# ─── Find Claude config file ─────────────────────────────────────────────────
+# ─── Find Claude config file (Desktop) ───────────────────────────────────────
 
 case "$(uname -s)" in
   Darwin)
-    CONFIG_DIR="$HOME/Library/Application Support/Claude"
+    DESKTOP_CONFIG_DIR="$HOME/Library/Application Support/Claude"
     ;;
   Linux)
-    CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
+    DESKTOP_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/Claude"
     ;;
   *)
     die "Unsupported OS. On Windows, use install.ps1 instead: irm https://raw.githubusercontent.com/iamvirul/the-council/main/install.ps1 | iex"
     ;;
 esac
 
-CONFIG_FILE="$CONFIG_DIR/claude_desktop_config.json"
+DESKTOP_CONFIG_FILE="$DESKTOP_CONFIG_DIR/claude_desktop_config.json"
 
-# ─── Merge MCP server entry into config ──────────────────────────────────────
+# Build PATH string for env block
+SYSTEM_PATH="/usr/local/bin:/usr/bin:/bin"
+MCP_PATH="$CLAUDE_DIR:$SYSTEM_PATH"
 
-blue "Configuring Claude MCP server..."
+# ─── 1. Claude Desktop config ────────────────────────────────────────────────
 
-node - "$CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" "$AUTH_MODE" "${ANTHROPIC_API_KEY:-}" "$CLAUDE_DIR" <<'EOF'
+blue "Configuring Claude Desktop MCP server..."
+
+node - "$DESKTOP_CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" "$AUTH_MODE" "${ANTHROPIC_API_KEY:-}" "$MCP_PATH" <<'EOF'
 const fs   = require('fs');
 const path = require('path');
 
-const [,, configFile, serverKey, pkg, authMode, apiKey, claudeDir] = process.argv;
+const [,, configFile, serverKey, pkg, authMode, apiKey, mcpPath] = process.argv;
 const dir = path.dirname(configFile);
 
-// Read existing config or start empty
 let config = {};
 if (fs.existsSync(configFile)) {
   try {
@@ -115,34 +118,47 @@ if (fs.existsSync(configFile)) {
   }
 }
 
-// Merge in the new server entry without touching anything else
 config.mcpServers = config.mcpServers ?? {};
 
-if (config.mcpServers[serverKey]) {
-  console.log(`Already configured: "${serverKey}" entry exists — updating.`);
-}
+const env = authMode === 'api_key'
+  ? { ANTHROPIC_API_KEY: apiKey }
+  : { PATH: mcpPath };
 
-// Build env block
-const env = {};
-
-if (authMode === 'api_key') {
-  env.ANTHROPIC_API_KEY = apiKey;
-} else {
-  // Add claude CLI directory to PATH so the Agent SDK can find it
-  const systemPath = `/usr/local/bin:/usr/bin:/bin`;
-  env.PATH = `${claudeDir}:${systemPath}`;
-}
-
-config.mcpServers[serverKey] = {
-  command: 'npx',
-  args: ['-y', pkg],
-  env,
-};
+config.mcpServers[serverKey] = { command: 'npx', args: ['-y', pkg], env };
 
 fs.mkdirSync(dir, { recursive: true });
 fs.writeFileSync(configFile, JSON.stringify(config, null, 2) + '\n');
-console.log('Config written to: ' + configFile);
+console.log('  Desktop config : ' + configFile);
 EOF
+
+# ─── 2. Claude Code CLI config ───────────────────────────────────────────────
+
+blue "Configuring Claude Code CLI MCP server..."
+
+CLI_REGISTERED=false
+
+if command -v claude &>/dev/null || [ -x "$CLAUDE_PATH" ]; then
+  CLAUDE_CMD="${CLAUDE_PATH:-claude}"
+
+  # Build the mcp add command with env
+  if [ "$AUTH_MODE" = "api_key" ]; then
+    "$CLAUDE_CMD" mcp add "$SERVER_KEY" \
+      -e ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}" \
+      -- npx -y "$PACKAGE" 2>/dev/null && CLI_REGISTERED=true || true
+  else
+    "$CLAUDE_CMD" mcp add "$SERVER_KEY" \
+      -e PATH="$MCP_PATH" \
+      -- npx -y "$PACKAGE" 2>/dev/null && CLI_REGISTERED=true || true
+  fi
+
+  if [ "$CLI_REGISTERED" = true ]; then
+    echo "  CLI config     : registered via 'claude mcp add'"
+  else
+    echo "  CLI config     : skipped (already registered or claude mcp add failed)"
+  fi
+else
+  echo "  CLI config     : skipped (claude CLI not in PATH)"
+fi
 
 # ─── Done ─────────────────────────────────────────────────────────────────────
 
@@ -152,7 +168,6 @@ echo ""
 echo "  Server key : $SERVER_KEY"
 echo "  Package    : $PACKAGE (runs via npx, no global install needed)"
 echo "  Auth       : $AUTH_MODE"
-echo "  Config     : $CONFIG_FILE"
 echo ""
 green "Restart Claude Code and the council tools will appear automatically."
 echo ""
