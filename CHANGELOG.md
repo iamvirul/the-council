@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-04-13
+
+### Fixed
+- `install.sh` now also runs `claude mcp add` to register the server with Claude Code CLI — previously only Claude Desktop was configured, so the tools were invisible in the CLI
+- `install.ps1` rewritten to match: detects `claude` binary, falls back to `ANTHROPIC_API_KEY`, configures both Claude Desktop and Claude Code CLI
+- `runner.ts` strips `ANTHROPIC_API_KEY` when set to an empty string — Claude Desktop injects an empty key into the MCP server env, causing the child `claude` process to attempt API key auth and fail with exit 1
+
 ## [0.2.1] - 2026-04-12
 
 ### Fixed
@@ -66,7 +73,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/iamvirul/the-council/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/iamvirul/the-council/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/iamvirul/the-council/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/iamvirul/the-council/compare/v0.1.1...v0.1.2
