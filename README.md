@@ -5,11 +5,11 @@
 [![CI](https://github.com/iamvirul/the-council/actions/workflows/ci.yml/badge.svg)](https://github.com/iamvirul/the-council/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A four-tier AI agent orchestration system that runs inside Claude Code. No separate API key needed.
+A four-tier AI agent orchestration system built as a Claude Code MCP server.
 
 The Council is a TypeScript [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server with four Claude agents. When you give it a problem, it figures out the complexity and sends it to the right agents. A formatting task goes straight to the fast Aide (Haiku). A coding task goes to the Executor (Sonnet). A design or architecture problem first goes through the Chancellor (Opus) for a plan, then the Executor runs each step, delegating simple sub-tasks to the Aide. After each agent produces output, the Supervisor (Haiku) reviews it for quality and flags any issues before results surface to the caller.
 
-All agents run as sub-agents of your existing Claude Code session, so no extra authentication is needed.
+> **Requirements:** An [Anthropic API key](https://console.anthropic.com). council-mcp runs as a standalone process and spawns sub-agents via the Anthropic API directly — it cannot inherit Claude Code's session credentials.
 
 ---
 
@@ -128,7 +128,7 @@ curl -fsSL https://raw.githubusercontent.com/iamvirul/the-council/main/install.s
 irm https://raw.githubusercontent.com/iamvirul/the-council/main/install.ps1 | iex
 ```
 
-Both scripts install nothing globally. They add the MCP server entry to your Claude config file and leave everything else untouched.
+Both scripts prompt for your Anthropic API key and write it into the MCP server config. Nothing is installed globally.
 
 | OS | Config file path |
 |---|---|
@@ -147,15 +147,16 @@ Add this to your Claude Code MCP config:
   "mcpServers": {
     "the-council": {
       "command": "npx",
-      "args": ["-y", "council-mcp"]
+      "args": ["-y", "council-mcp"],
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-..."
+      }
     }
   }
 }
 ```
 
 Restart Claude Code and the tools will appear.
-
-**No API key needed.** The Council runs inside your existing Claude Code session and inherits its authentication.
 
 ### Registries
 
