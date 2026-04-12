@@ -29,6 +29,30 @@ if (-not (Get-Command npx -ErrorAction SilentlyContinue)) {
     Write-Fail "npx is not available. Make sure npm is installed alongside Node.js."
 }
 
+# ─── API key ─────────────────────────────────────────────────────────────────
+# council-mcp spawns sub-agents via the Anthropic API and needs its own key.
+# It cannot inherit Claude Code's session credentials.
+
+Write-Host ""
+Write-Info "council-mcp requires an Anthropic API key to spawn sub-agents."
+Write-Host "Get one at https://console.anthropic.com"
+Write-Host ""
+
+$ApiKey = $env:ANTHROPIC_API_KEY
+
+if ($ApiKey) {
+    Write-Host "Found ANTHROPIC_API_KEY in environment."
+} else {
+    $SecureKey = Read-Host "Paste your Anthropic API key" -AsSecureString
+    $ApiKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureKey)
+    )
+
+    if (-not $ApiKey) {
+        Write-Fail "No API key provided. Re-run the script and enter your key, or set ANTHROPIC_API_KEY before running."
+    }
+}
+
 # ─── Find Claude config file ─────────────────────────────────────────────────
 
 $ConfigDir  = Join-Path $env:APPDATA 'Claude'
@@ -60,10 +84,11 @@ if ($config['mcpServers'].ContainsKey($ServerKey)) {
     Write-Host "Already configured: `"$ServerKey`" entry exists - updating." -ForegroundColor Yellow
 }
 
-# Set the server entry
+# Set the server entry with API key in env
 $config['mcpServers'][$ServerKey] = [ordered]@{
     command = 'npx'
     args    = @('-y', $Package)
+    env     = [ordered]@{ ANTHROPIC_API_KEY = $ApiKey }
 }
 
 # Write back
@@ -86,8 +111,9 @@ Write-Host ""
 Write-Ok "Restart Claude Code and the council tools will appear automatically."
 Write-Host ""
 Write-Host "Available tools after restart:"
-Write-Host "  orchestrate            route any problem through the full agent hierarchy"
-Write-Host "  consult_chancellor     invoke Opus directly for deep planning"
-Write-Host "  execute_with_executor  invoke Sonnet directly for implementation"
-Write-Host "  delegate_to_aide       invoke Haiku directly for simple tasks"
-Write-Host "  get_council_state      inspect session state"
+Write-Host "  orchestrate               route any problem through the full agent hierarchy"
+Write-Host "  consult_chancellor        invoke Opus directly for deep planning"
+Write-Host "  execute_with_executor     invoke Sonnet directly for implementation"
+Write-Host "  delegate_to_aide          invoke Haiku directly for simple tasks"
+Write-Host "  get_council_state         inspect session state"
+Write-Host "  get_supervisor_verdicts   review Supervisor quality flags for a session"

@@ -34,6 +34,34 @@ if ! command -v npx &>/dev/null; then
   die "npx is not available. Make sure npm is installed alongside Node.js."
 fi
 
+# ─── API key ─────────────────────────────────────────────────────────────────
+# council-mcp spawns sub-agents via the Anthropic API and needs its own key.
+# It cannot inherit Claude Code's session credentials.
+
+echo ""
+blue "council-mcp requires an Anthropic API key to spawn sub-agents."
+echo "Get one at https://console.anthropic.com"
+echo ""
+
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  echo "Found ANTHROPIC_API_KEY in environment."
+  API_KEY="$ANTHROPIC_API_KEY"
+else
+  # Read from terminal even when piped (curl | bash)
+  if [ -t 0 ]; then
+    read -rsp "Paste your Anthropic API key (input hidden): " API_KEY
+    echo ""
+  else
+    # Running non-interactively (piped) — try /dev/tty
+    read -rsp "Paste your Anthropic API key (input hidden): " API_KEY </dev/tty
+    echo ""
+  fi
+
+  if [ -z "$API_KEY" ]; then
+    die "No API key provided. Re-run the script and enter your key, or set ANTHROPIC_API_KEY before running."
+  fi
+fi
+
 # ─── Find Claude config file ─────────────────────────────────────────────────
 
 case "$(uname -s)" in
@@ -54,11 +82,11 @@ CONFIG_FILE="$CONFIG_DIR/claude_desktop_config.json"
 
 blue "Configuring Claude MCP server..."
 
-node - "$CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" <<'EOF'
+node - "$CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" "$API_KEY" <<'EOF'
 const fs   = require('fs');
 const path = require('path');
 
-const [,, configFile, serverKey, pkg] = process.argv;
+const [,, configFile, serverKey, pkg, apiKey] = process.argv;
 const dir = path.dirname(configFile);
 
 // Read existing config or start empty
@@ -83,6 +111,7 @@ if (config.mcpServers[serverKey]) {
 config.mcpServers[serverKey] = {
   command: 'npx',
   args: ['-y', pkg],
+  env: { ANTHROPIC_API_KEY: apiKey },
 };
 
 fs.mkdirSync(dir, { recursive: true });
@@ -102,8 +131,9 @@ echo ""
 green "Restart Claude Code and the council tools will appear automatically."
 echo ""
 echo "Available tools after restart:"
-echo "  orchestrate            route any problem through the full agent hierarchy"
-echo "  consult_chancellor     invoke Opus directly for deep planning"
-echo "  execute_with_executor  invoke Sonnet directly for implementation"
-echo "  delegate_to_aide       invoke Haiku directly for simple tasks"
-echo "  get_council_state      inspect session state"
+echo "  orchestrate               route any problem through the full agent hierarchy"
+echo "  consult_chancellor        invoke Opus directly for deep planning"
+echo "  execute_with_executor     invoke Sonnet directly for implementation"
+echo "  delegate_to_aide          invoke Haiku directly for simple tasks"
+echo "  get_council_state         inspect session state"
+echo "  get_supervisor_verdicts   review Supervisor quality flags for a session"
