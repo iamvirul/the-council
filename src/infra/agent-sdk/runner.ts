@@ -78,6 +78,7 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
     '--model', model,
     '--system-prompt-file', systemPromptFile,
     '--output-format', 'text',
+    '--dangerously-skip-permissions',
   ];
 
   if (tools.length > 0) {
@@ -92,9 +93,17 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
 
+    // Strip ANTHROPIC_API_KEY if it is empty — an empty key causes the claude
+    // CLI to attempt API-key auth and fail. When omitted, claude falls back to
+    // its stored OAuth session (Claude Code subscription).
+    const childEnv = { ...process.env };
+    if (!childEnv['ANTHROPIC_API_KEY']) {
+      delete childEnv['ANTHROPIC_API_KEY'];
+    }
+
     const proc = spawn(CLAUDE_BIN, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: childEnv,
     });
 
     proc.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
@@ -118,7 +127,14 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
       const err = Buffer.concat(stderr).toString('utf8').trim();
 
       if (code !== 0) {
-        logger.error({ role, code, stderr: err.slice(0, 500) }, 'claude CLI exited with error');
+        logger.error({
+          role,
+          code,
+          stderr: err.slice(0, 500),
+          stdout: out.slice(0, 500),
+          claudeBin: CLAUDE_BIN,
+          args,
+        }, 'claude CLI exited with error');
         reject(new CouncilError(
           `claude CLI failed for ${role} (exit ${code}): ${err.slice(0, 300)}`,
           'AGENT_SDK_ERROR',
