@@ -15,26 +15,8 @@ Sub-agents run via the `claude` CLI — the same one Claude Code uses. **If you 
 
 ## How It Works
 
-```mermaid
-flowchart TD
-    U([User]) -->|natural language request| CC[Claude Code]
-    CC -->|MCP tool call| MCP[The Council\nMCP Server]
-    MCP --> ORC[Orchestrator\ncomplexity assessment]
+<img width="1302" height="1507" alt="architechture" src="https://github.com/user-attachments/assets/835f09e8-7d5c-474b-900e-ecf7f5d87113" />
 
-    ORC -->|trivial\nformat · convert · count| A[Aide\nHaiku 4.5]
-    ORC -->|simple\nstraightforward implementation| E[Executor\nSonnet 4.6]
-    ORC -->|complex\nplan · design · analyze · risk| CH[Chancellor\nOpus 4.6]
-
-    CH -->|structured plan| E
-    E -->|delegates simple sub-tasks| A
-
-    A -->|AideResponse| SV[Supervisor\nHaiku 4.5]
-    E -->|ExecutorResponse| SV
-    SV -->|SupervisorVerdict| ORC
-
-    ORC -->|result + verdicts + session| CC
-    CC --> U
-```
 
 Complexity routing uses a fast keyword + word count check with no extra LLM call.
 
@@ -61,41 +43,7 @@ The Supervisor is **advisory only** — it annotates and flags, never blocks. If
 
 ## Orchestration Flow
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant CC as Claude Code
-    participant ORC as Orchestrator
-    participant CH as Chancellor
-    participant EX as Executor
-    participant AI as Aide
-    participant SV as Supervisor
-
-    User->>CC: "Design a microservices architecture for my e-commerce app"
-    CC->>ORC: orchestrate(problem)
-    ORC->>ORC: assessComplexity() -> complex
-
-    ORC->>CH: invokeChancellor(problem)
-    CH-->>ORC: ChancellorResponse<br/>(analysis, plan[], risks[])
-
-    loop For each PlanStep
-        ORC->>EX: invokeExecutor(step, plan context)
-        EX-->>ORC: ExecutorResponse<br/>(result, delegated_tasks[])
-        ORC->>SV: supervise(executor_step, result)
-        SV-->>ORC: SupervisorVerdict<br/>(approved, flags[])
-
-        loop For each delegated_task
-            ORC->>AI: invokeAide(task_id, description)
-            AI-->>ORC: AideResponse<br/>(result, quality_check)
-            ORC->>SV: supervise(aide_task, result)
-            SV-->>ORC: SupervisorVerdict<br/>(approved, flags[])
-        end
-    end
-
-    ORC->>ORC: buildResultSummary(session)
-    ORC-->>CC: OrchestrateResult<br/>(result, verdicts, session)
-    CC-->>User: Formatted result + Supervisor flags
-```
+<img width="8192" height="5202" alt="Orchestration Flow" src="https://github.com/user-attachments/assets/aa2aaaba-bb20-4905-959f-546ccf63a2b5" />
 
 ---
 
@@ -206,18 +154,7 @@ Calls `consult_chancellor` directly, skipping orchestration. Returns a structure
 
 ## Session Lifecycle
 
-```mermaid
-stateDiagram-v2
-    [*] --> planning : orchestrate() called\n(complex problem)
-    [*] --> executing : orchestrate() called\n(trivial or simple problem)
-
-    planning --> executing : Chancellor plan received
-    executing --> complete : all steps finished
-    executing --> failed : unrecoverable error
-
-    complete --> [*]
-    failed --> [*]
-```
+<img width="1073" height="1392" alt="SessionLifecycle" src="https://github.com/user-attachments/assets/60a39141-682a-4e9c-9ac1-87837d282e90" />
 
 Use `get_council_state` at any point to inspect a session. Each session tracks:
 - Phase (`planning` / `executing` / `complete` / `failed`)
