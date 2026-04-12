@@ -1,7 +1,8 @@
-// Wrapper around the Claude Agent SDK's query() function.
-// Each agent (Chancellor, Executor, Aide) is invoked as a sub-agent that
-// inherits the Claude Code session — no separate API key required.
-import { query } from '@anthropic-ai/claude-agent-sdk';
+// Runs Claude sub-agents by invoking the claude CLI directly as a subprocess.
+// This works with both OAuth (Claude.ai subscription) and ANTHROPIC_API_KEY,
+// so no separate API key is needed if Claude Code is already installed.
+import { spawn } from 'child_process';
+import { execSync } from 'child_process';
 import type { AgentRole } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
 import { logger } from '../logging/logger.js';
@@ -16,57 +17,117 @@ export interface RunAgentParams {
   tools?: string[];
 }
 
+// Resolve the claude binary once at startup.
+function resolveClaude(): string {
+  // Prefer explicit env override
+  if (process.env['CLAUDE_PATH']) return process.env['CLAUDE_PATH'];
+
+  // Common install locations
+  const candidates = [
+    `${process.env['HOME'] ?? ''}/.local/bin/claude`,
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
+  ];
+
+  for (const c of candidates) {
+    try {
+      execSync(`"${c}" --version`, { stdio: 'ignore' });
+      return c;
+    } catch {
+      // not found here, try next
+    }
+  }
+
+  // Fall back to PATH
+  try {
+    const found = execSync('which claude', { encoding: 'utf8' }).trim();
+    if (found) return found;
+  } catch {
+    // not in PATH either
+  }
+
+  throw new CouncilError(
+    'claude CLI not found. Install Claude Code or set CLAUDE_PATH to the claude binary.',
+    'AGENT_SDK_ERROR',
+  );
+}
+
+const CLAUDE_BIN = resolveClaude();
+logger.info({ claude: CLAUDE_BIN }, 'claude CLI resolved');
+
 /**
- * Runs a Claude sub-agent via the Agent SDK and returns the final result text.
- * The agent is expected to return a JSON string as its final result.
- *
- * Chancellor and Aide receive no tools (pure reasoning).
- * Executor receives file/shell tools when tools param is provided.
+ * Runs a Claude sub-agent via the claude CLI and returns the final result text.
+ * Works with OAuth (Claude.ai subscription) and ANTHROPIC_API_KEY — no extra cost
+ * if Claude Code is already installed.
  */
 export async function runAgent(params: RunAgentParams): Promise<string> {
   const { role, model, systemPrompt, userMessage, maxTurns, tools = [] } = params;
 
   logger.info({ role, model, toolCount: tools.length }, 'Invoking council agent');
 
-  let result: string | undefined;
+  const args = [
+    '-p', userMessage,
+    '--model', model,
+    '--system-prompt', systemPrompt,
+    '--output-format', 'text',
+  ];
 
-  try {
-    for await (const message of query({
-      prompt: userMessage,
-      options: {
-        model,
-        systemPrompt,
-        maxTurns,
-        allowedTools: tools,
-        // Explicit permission mode: acceptEdits avoids interactive prompts in
-        // automated orchestration while still scoping to the declared allowedTools.
-        permissionMode: tools.length > 0 ? 'acceptEdits' : 'default',
-      },
-    })) {
-      if ('result' in message) {
-        result = message.result;
+  if (tools.length > 0) {
+    args.push('--allowedTools', tools.join(','));
+  }
+
+  // maxTurns is not a CLI flag — agents return in a single turn given a
+  // clear JSON output schema. Log it for observability only.
+  logger.debug({ role, maxTurns }, 'maxTurns is advisory; claude CLI manages its own turn budget');
+
+  return new Promise((resolve, reject) => {
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+
+    const proc = spawn(CLAUDE_BIN, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
+    });
+
+    proc.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+    proc.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+
+    proc.on('error', (err) => {
+      reject(new CouncilError(
+        `Failed to spawn claude CLI for ${role}: ${err.message}`,
+        'AGENT_SDK_ERROR',
+        role,
+        err,
+      ));
+    });
+
+    proc.on('close', (code) => {
+      const out = Buffer.concat(stdout).toString('utf8').trim();
+      const err = Buffer.concat(stderr).toString('utf8').trim();
+
+      if (code !== 0) {
+        logger.error({ role, code, stderr: err.slice(0, 500) }, 'claude CLI exited with error');
+        reject(new CouncilError(
+          `claude CLI failed for ${role} (exit ${code}): ${err.slice(0, 300)}`,
+          'AGENT_SDK_ERROR',
+          role,
+        ));
+        return;
       }
-    }
-  } catch (err) {
-    logger.error({ role, err }, 'Agent SDK call failed');
-    throw new CouncilError(
-      `Agent SDK call failed for ${role}: ${err instanceof Error ? err.message : String(err)}`,
-      'AGENT_SDK_ERROR',
-      role,
-      err,
-    );
-  }
 
-  if (result === undefined || result.trim() === '') {
-    throw new CouncilError(
-      `Agent ${role} returned no result`,
-      'AGENT_SDK_ERROR',
-      role,
-    );
-  }
+      if (!out) {
+        reject(new CouncilError(
+          `Agent ${role} returned no output`,
+          'AGENT_SDK_ERROR',
+          role,
+        ));
+        return;
+      }
 
-  logger.info({ role }, 'Agent completed successfully');
-  return result;
+      logger.info({ role }, 'Agent completed successfully');
+      resolve(out);
+    });
+  });
 }
 
 // Convenience wrapper for the Executor — pre-configured with coding tools.
