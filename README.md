@@ -128,13 +128,14 @@ curl -fsSL https://raw.githubusercontent.com/iamvirul/the-council/main/install.s
 irm https://raw.githubusercontent.com/iamvirul/the-council/main/install.ps1 | iex
 ```
 
-Both scripts detect your `claude` CLI location and add it to the MCP server's PATH. No API key or extra cost if you already have Claude Code. Nothing is installed globally.
+Both scripts detect your `claude` CLI location and configure both **Claude Desktop** and **Claude Code CLI** automatically. No API key or extra cost if you already have Claude Code. Nothing is installed globally.
 
-| OS | Config file path |
+| Target | Config location |
 |---|---|
-| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Linux | `~/.config/Claude/claude_desktop_config.json` |
-| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Claude Desktop (macOS) | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Claude Desktop (Linux) | `~/.config/Claude/claude_desktop_config.json` |
+| Claude Desktop (Windows) | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Claude Code CLI | Registered via `claude mcp add` (project-scoped) |
 
 Restart Claude Code after running the script.
 
@@ -257,7 +258,7 @@ src/
     aide/           # Aide agent wrapper
     supervisor/     # Supervisor agent wrapper (non-blocking quality review)
   infra/            # External dependencies
-    agent-sdk/      # runner.ts - wraps Claude Agent SDK query()
+    agent-sdk/      # runner.ts - spawns claude CLI subprocess for each agent
     state/          # In-process session state store (LRU, 500 session cap)
     logging/        # pino structured logger (stderr only)
   mcp/
