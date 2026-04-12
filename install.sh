@@ -34,6 +34,48 @@ if ! command -v npx &>/dev/null; then
   die "npx is not available. Make sure npm is installed alongside Node.js."
 fi
 
+# ─── Find claude binary ───────────────────────────────────────────────────────
+# council-mcp spawns sub-agents via the claude CLI — the same one Claude Code
+# uses. No separate API key is needed; it runs under your existing session.
+
+CLAUDE_PATH=""
+
+# Common install locations
+for candidate in \
+  "$HOME/.local/bin/claude" \
+  "/usr/local/bin/claude" \
+  "/opt/homebrew/bin/claude" \
+  "$HOME/.npm-global/bin/claude"; do
+  if [ -x "$candidate" ]; then
+    CLAUDE_PATH="$candidate"
+    break
+  fi
+done
+
+# Fallback: try PATH
+if [ -z "$CLAUDE_PATH" ] && command -v claude &>/dev/null; then
+  CLAUDE_PATH="$(command -v claude)"
+fi
+
+if [ -z "$CLAUDE_PATH" ]; then
+  die "Claude Code CLI not found. Make sure Claude Code is installed and 'claude' is accessible."
+fi
+
+CLAUDE_DIR="$(dirname "$CLAUDE_PATH")"
+echo "Found claude CLI at: $CLAUDE_PATH"
+
+# ─── Authentication mode ──────────────────────────────────────────────────────
+# Prefer using the existing Claude Code session via the CLI (no extra cost).
+# Fall back to ANTHROPIC_API_KEY if explicitly set.
+
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  AUTH_MODE="api_key"
+  echo "ANTHROPIC_API_KEY found in environment — will use API key auth."
+else
+  AUTH_MODE="session"
+  echo "Using existing Claude Code session via CLI (no API key needed)."
+fi
+
 # ─── Find Claude config file ─────────────────────────────────────────────────
 
 case "$(uname -s)" in
@@ -54,11 +96,11 @@ CONFIG_FILE="$CONFIG_DIR/claude_desktop_config.json"
 
 blue "Configuring Claude MCP server..."
 
-node - "$CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" <<'EOF'
+node - "$CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" "$AUTH_MODE" "${ANTHROPIC_API_KEY:-}" "$CLAUDE_DIR" <<'EOF'
 const fs   = require('fs');
 const path = require('path');
 
-const [,, configFile, serverKey, pkg] = process.argv;
+const [,, configFile, serverKey, pkg, authMode, apiKey, claudeDir] = process.argv;
 const dir = path.dirname(configFile);
 
 // Read existing config or start empty
@@ -80,9 +122,21 @@ if (config.mcpServers[serverKey]) {
   console.log(`Already configured: "${serverKey}" entry exists — updating.`);
 }
 
+// Build env block
+const env = {};
+
+if (authMode === 'api_key') {
+  env.ANTHROPIC_API_KEY = apiKey;
+} else {
+  // Add claude CLI directory to PATH so the Agent SDK can find it
+  const systemPath = `/usr/local/bin:/usr/bin:/bin`;
+  env.PATH = `${claudeDir}:${systemPath}`;
+}
+
 config.mcpServers[serverKey] = {
   command: 'npx',
   args: ['-y', pkg],
+  env,
 };
 
 fs.mkdirSync(dir, { recursive: true });
@@ -97,13 +151,15 @@ bold "The Council is configured."
 echo ""
 echo "  Server key : $SERVER_KEY"
 echo "  Package    : $PACKAGE (runs via npx, no global install needed)"
+echo "  Auth       : $AUTH_MODE"
 echo "  Config     : $CONFIG_FILE"
 echo ""
 green "Restart Claude Code and the council tools will appear automatically."
 echo ""
 echo "Available tools after restart:"
-echo "  orchestrate            route any problem through the full agent hierarchy"
-echo "  consult_chancellor     invoke Opus directly for deep planning"
-echo "  execute_with_executor  invoke Sonnet directly for implementation"
-echo "  delegate_to_aide       invoke Haiku directly for simple tasks"
-echo "  get_council_state      inspect session state"
+echo "  orchestrate               route any problem through the full agent hierarchy"
+echo "  consult_chancellor        invoke Opus directly for deep planning"
+echo "  execute_with_executor     invoke Sonnet directly for implementation"
+echo "  delegate_to_aide          invoke Haiku directly for simple tasks"
+echo "  get_council_state         inspect session state"
+echo "  get_supervisor_verdicts   review Supervisor quality flags for a session"
