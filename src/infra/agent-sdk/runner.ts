@@ -3,6 +3,9 @@
 // so no separate API key is needed if Claude Code is already installed.
 import { spawn } from 'child_process';
 import { execSync } from 'child_process';
+import { writeFileSync, unlinkSync, rmdirSync, mkdtempSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import type { AgentRole } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
 import { logger } from '../logging/logger.js';
@@ -65,10 +68,15 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
 
   logger.info({ role, model, toolCount: tools.length }, 'Invoking council agent');
 
+  // Write system prompt to a temp file to avoid shell arg length/escaping issues
+  const tmpDir = mkdtempSync(join(tmpdir(), 'council-'));
+  const systemPromptFile = join(tmpDir, 'system.txt');
+  writeFileSync(systemPromptFile, systemPrompt, 'utf8');
+
   const args = [
     '-p', userMessage,
     '--model', model,
-    '--system-prompt', systemPrompt,
+    '--system-prompt-file', systemPromptFile,
     '--output-format', 'text',
   ];
 
@@ -102,6 +110,10 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
     });
 
     proc.on('close', (code) => {
+      // Clean up temp files regardless of outcome
+      try { unlinkSync(systemPromptFile); } catch { /* ignore */ }
+      try { rmdirSync(tmpDir); } catch { /* ignore */ }
+
       const out = Buffer.concat(stdout).toString('utf8').trim();
       const err = Buffer.concat(stderr).toString('utf8').trim();
 
