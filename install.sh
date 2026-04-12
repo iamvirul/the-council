@@ -34,32 +34,46 @@ if ! command -v npx &>/dev/null; then
   die "npx is not available. Make sure npm is installed alongside Node.js."
 fi
 
-# ─── API key ─────────────────────────────────────────────────────────────────
-# council-mcp spawns sub-agents via the Anthropic API and needs its own key.
-# It cannot inherit Claude Code's session credentials.
+# ─── Find claude binary ───────────────────────────────────────────────────────
+# council-mcp spawns sub-agents via the claude CLI — the same one Claude Code
+# uses. No separate API key is needed; it runs under your existing session.
 
-echo ""
-blue "council-mcp requires an Anthropic API key to spawn sub-agents."
-echo "Get one at https://console.anthropic.com"
-echo ""
+CLAUDE_PATH=""
+
+# Common install locations
+for candidate in \
+  "$HOME/.local/bin/claude" \
+  "/usr/local/bin/claude" \
+  "/opt/homebrew/bin/claude" \
+  "$HOME/.npm-global/bin/claude"; do
+  if [ -x "$candidate" ]; then
+    CLAUDE_PATH="$candidate"
+    break
+  fi
+done
+
+# Fallback: try PATH
+if [ -z "$CLAUDE_PATH" ] && command -v claude &>/dev/null; then
+  CLAUDE_PATH="$(command -v claude)"
+fi
+
+if [ -z "$CLAUDE_PATH" ]; then
+  die "Claude Code CLI not found. Make sure Claude Code is installed and 'claude' is accessible."
+fi
+
+CLAUDE_DIR="$(dirname "$CLAUDE_PATH")"
+echo "Found claude CLI at: $CLAUDE_PATH"
+
+# ─── Authentication mode ──────────────────────────────────────────────────────
+# Prefer using the existing Claude Code session via the CLI (no extra cost).
+# Fall back to ANTHROPIC_API_KEY if explicitly set.
 
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  echo "Found ANTHROPIC_API_KEY in environment."
-  API_KEY="$ANTHROPIC_API_KEY"
+  AUTH_MODE="api_key"
+  echo "ANTHROPIC_API_KEY found in environment — will use API key auth."
 else
-  # Read from terminal even when piped (curl | bash)
-  if [ -t 0 ]; then
-    read -rsp "Paste your Anthropic API key (input hidden): " API_KEY
-    echo ""
-  else
-    # Running non-interactively (piped) — try /dev/tty
-    read -rsp "Paste your Anthropic API key (input hidden): " API_KEY </dev/tty
-    echo ""
-  fi
-
-  if [ -z "$API_KEY" ]; then
-    die "No API key provided. Re-run the script and enter your key, or set ANTHROPIC_API_KEY before running."
-  fi
+  AUTH_MODE="session"
+  echo "Using existing Claude Code session via CLI (no API key needed)."
 fi
 
 # ─── Find Claude config file ─────────────────────────────────────────────────
@@ -82,11 +96,11 @@ CONFIG_FILE="$CONFIG_DIR/claude_desktop_config.json"
 
 blue "Configuring Claude MCP server..."
 
-node - "$CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" "$API_KEY" <<'EOF'
+node - "$CONFIG_FILE" "$SERVER_KEY" "$PACKAGE" "$AUTH_MODE" "${ANTHROPIC_API_KEY:-}" "$CLAUDE_DIR" <<'EOF'
 const fs   = require('fs');
 const path = require('path');
 
-const [,, configFile, serverKey, pkg, apiKey] = process.argv;
+const [,, configFile, serverKey, pkg, authMode, apiKey, claudeDir] = process.argv;
 const dir = path.dirname(configFile);
 
 // Read existing config or start empty
@@ -108,10 +122,21 @@ if (config.mcpServers[serverKey]) {
   console.log(`Already configured: "${serverKey}" entry exists — updating.`);
 }
 
+// Build env block
+const env = {};
+
+if (authMode === 'api_key') {
+  env.ANTHROPIC_API_KEY = apiKey;
+} else {
+  // Add claude CLI directory to PATH so the Agent SDK can find it
+  const systemPath = `/usr/local/bin:/usr/bin:/bin`;
+  env.PATH = `${claudeDir}:${systemPath}`;
+}
+
 config.mcpServers[serverKey] = {
   command: 'npx',
   args: ['-y', pkg],
-  env: { ANTHROPIC_API_KEY: apiKey },
+  env,
 };
 
 fs.mkdirSync(dir, { recursive: true });
@@ -126,6 +151,7 @@ bold "The Council is configured."
 echo ""
 echo "  Server key : $SERVER_KEY"
 echo "  Package    : $PACKAGE (runs via npx, no global install needed)"
+echo "  Auth       : $AUTH_MODE"
 echo "  Config     : $CONFIG_FILE"
 echo ""
 green "Restart Claude Code and the council tools will appear automatically."

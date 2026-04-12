@@ -9,7 +9,7 @@ A four-tier AI agent orchestration system built as a Claude Code MCP server.
 
 The Council is a TypeScript [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server with four Claude agents. When you give it a problem, it figures out the complexity and sends it to the right agents. A formatting task goes straight to the fast Aide (Haiku). A coding task goes to the Executor (Sonnet). A design or architecture problem first goes through the Chancellor (Opus) for a plan, then the Executor runs each step, delegating simple sub-tasks to the Aide. After each agent produces output, the Supervisor (Haiku) reviews it for quality and flags any issues before results surface to the caller.
 
-> **Requirements:** An [Anthropic API key](https://console.anthropic.com). council-mcp runs as a standalone process and spawns sub-agents via the Anthropic API directly — it cannot inherit Claude Code's session credentials.
+Sub-agents run via the `claude` CLI — the same one Claude Code uses. **If you already have Claude Code installed, no separate API key or extra cost is needed.** The install script finds the `claude` binary and wires it up automatically. Alternatively, set `ANTHROPIC_API_KEY` in the MCP server env for CI or API-key-based setups.
 
 ---
 
@@ -128,7 +128,7 @@ curl -fsSL https://raw.githubusercontent.com/iamvirul/the-council/main/install.s
 irm https://raw.githubusercontent.com/iamvirul/the-council/main/install.ps1 | iex
 ```
 
-Both scripts prompt for your Anthropic API key and write it into the MCP server config. Nothing is installed globally.
+Both scripts detect your `claude` CLI location and add it to the MCP server's PATH. No API key or extra cost if you already have Claude Code. Nothing is installed globally.
 
 | OS | Config file path |
 |---|---|
@@ -140,7 +140,7 @@ Restart Claude Code after running the script.
 
 ### Manual setup
 
-Add this to your Claude Code MCP config:
+Add this to your Claude Code MCP config. Replace the PATH value with the directory containing your `claude` binary (run `which claude` to find it):
 
 ```json
 {
@@ -149,12 +149,14 @@ Add this to your Claude Code MCP config:
       "command": "npx",
       "args": ["-y", "council-mcp"],
       "env": {
-        "ANTHROPIC_API_KEY": "sk-ant-..."
+        "PATH": "/path/to/claude/bin:/usr/local/bin:/usr/bin:/bin"
       }
     }
   }
 }
 ```
+
+If you prefer API key auth instead, use `"ANTHROPIC_API_KEY": "sk-ant-..."` in the `env` block.
 
 Restart Claude Code and the tools will appear.
 
