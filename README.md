@@ -109,6 +109,33 @@ If you prefer API key auth instead, use `"ANTHROPIC_API_KEY": "sk-ant-..."` in t
 
 Restart Claude Code and the tools will appear.
 
+### Persistent sessions (optional)
+
+By default sessions are stored in memory and cleared when the MCP server restarts. To persist sessions across restarts, add `COUNCIL_PERSIST` to the env block:
+
+| Value | Storage | Notes |
+|---|---|---|
+| `memory` | In-process (default) | Cleared on restart, no setup needed |
+| `file` | `~/.council/sessions/<id>.json` | Zero dependencies, human-readable |
+| `sqlite` | `~/.council/council.db` | Recommended — fast, transactional, concurrent-safe |
+
+```json
+{
+  "mcpServers": {
+    "the-council": {
+      "command": "npx",
+      "args": ["-y", "council-mcp"],
+      "env": {
+        "PATH": "/path/to/claude/bin:/usr/local/bin:/usr/bin:/bin",
+        "COUNCIL_PERSIST": "sqlite"
+      }
+    }
+  }
+}
+```
+
+Sessions older than 7 days are automatically expired on startup and periodically in file and SQLite modes.
+
 ### Registries
 
 The package is published to two registries on every release:

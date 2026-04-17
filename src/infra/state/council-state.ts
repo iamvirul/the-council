@@ -1,116 +1,61 @@
-// In-memory session store. Sessions live for the lifetime of the MCP server process.
-import type { CouncilSession, AgentRole, ExecutorResponse, AideResponse, SessionPhase, ChancellorResponse, SupervisorVerdict } from '../../domain/models/types.js';
-import { CouncilError } from '../../domain/models/types.js';
+// Session store factory — selects backend based on COUNCIL_PERSIST env var.
+//
+//   COUNCIL_PERSIST=memory  (default) — in-process LRU Map, cleared on restart
+//   COUNCIL_PERSIST=file             — JSON files at ~/.council/sessions/
+//   COUNCIL_PERSIST=sqlite           — SQLite at ~/.council/council.db
+//
+// The exported `stateStore` is a drop-in replacement for the old singleton.
+// All call sites are unchanged.
+import { createRequire } from 'module';
+import type { SessionStore } from './session-store.js';
+import { MemoryStore } from './stores/memory-store.js';
+import { logger } from '../logging/logger.js';
 
-// Cap at 500 sessions — evict oldest when exceeded to prevent OOM.
-const MAX_SESSIONS = 500;
+export type { SessionStore };
 
-class CouncilStateStore {
-  private sessions = new Map<string, CouncilSession>();
+// createRequire lets us synchronously load CJS-compatible modules inside ESM.
+const require = createRequire(import.meta.url);
 
-  create(problem: string): CouncilSession {
-    if (this.sessions.size >= MAX_SESSIONS) {
-      const oldest = [...this.sessions.values()].sort(
-        (a, b) => a.created_at.localeCompare(b.created_at),
-      )[0];
-      if (oldest) this.sessions.delete(oldest.request_id);
-    }
+/**
+ * Selects and constructs the process-wide session store implementation based on the COUNCIL_PERSIST environment variable.
+ *
+ * If COUNCIL_PERSIST is 'file' or 'sqlite' the corresponding persistent store is returned; otherwise the in-memory store is returned (default: 'memory').
+ *
+ * @returns A `SessionStore` instance configured for the selected persistence mode ('memory', 'file', or 'sqlite').
+ */
+function createStore(): SessionStore {
+  const mode = (process.env['COUNCIL_PERSIST'] ?? 'memory').toLowerCase();
 
-    const session: CouncilSession = {
-      request_id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-      problem,
-      phase: 'planning',
-      executor_progress: {
-        completed_steps: [],
-        results: [],
-      },
-      aide_results: [],
-      supervisor_verdicts: [],
-      metrics: {
-        total_agent_calls: 0,
-        agents_invoked: [],
-      },
-    };
-    this.sessions.set(session.request_id, session);
-    return session;
-  }
-
-  get(requestId: string): CouncilSession {
-    const session = this.sessions.get(requestId);
-    if (!session) {
-      throw new CouncilError(
-        `Session not found: ${requestId}`,
-        'SESSION_NOT_FOUND',
-      );
-    }
-    return session;
-  }
-
-  getOptional(requestId: string): CouncilSession | undefined {
-    return this.sessions.get(requestId);
-  }
-
-  setPhase(requestId: string, phase: SessionPhase): void {
-    const session = this.get(requestId);
-    session.phase = phase;
-  }
-
-  setChancellorPlan(requestId: string, plan: ChancellorResponse): void {
-    const session = this.get(requestId);
-    session.chancellor_plan = plan;
-  }
-
-  setCurrentStep(requestId: string, stepId: string): void {
-    const session = this.get(requestId);
-    session.executor_progress.current_step = stepId;
-  }
-
-  recordAgentCall(requestId: string, role: AgentRole): void {
-    const session = this.get(requestId);
-    session.metrics.total_agent_calls++;
-    if (!session.metrics.agents_invoked.includes(role)) {
-      session.metrics.agents_invoked.push(role);
+  if (mode === 'file') {
+    try {
+      const { FileStore } = require('./stores/file-store.js') as typeof import('./stores/file-store.js');
+      logger.info({ mode: 'file' }, 'Session persistence: file (~/.council/sessions/)');
+      return new FileStore();
+    } catch (err) {
+      logger.error({ mode: 'file', path: '~/.council/sessions/', err }, 'FileStore initialization failed — falling back to memory');
+      return new MemoryStore();
     }
   }
 
-  recordExecutorResult(requestId: string, result: ExecutorResponse): void {
-    const session = this.get(requestId);
-    session.executor_progress.results.push(result);
-    session.executor_progress.completed_steps.push(result.step_id);
-    session.executor_progress.current_step = result.next_step;
+  if (mode === 'sqlite') {
+    try {
+      const { SQLiteStore } = require('./stores/sqlite-store.js') as typeof import('./stores/sqlite-store.js');
+      logger.info({ mode: 'sqlite' }, 'Session persistence: SQLite (~/.council/council.db)');
+      return new SQLiteStore();
+    } catch (err) {
+      logger.error({ mode: 'sqlite', path: '~/.council/council.db', err }, 'SQLiteStore initialization failed — falling back to memory');
+      return new MemoryStore();
+    }
   }
 
-  recordAideResult(requestId: string, result: AideResponse): void {
-    const session = this.get(requestId);
-    session.aide_results.push(result);
+  if (mode !== 'memory') {
+    logger.warn({ COUNCIL_PERSIST: mode }, 'Unknown COUNCIL_PERSIST value — falling back to memory');
+  } else {
+    logger.info({ mode: 'memory' }, 'Session persistence: memory (cleared on restart)');
   }
 
-  recordSupervisorVerdict(requestId: string, verdict: SupervisorVerdict): void {
-    const session = this.get(requestId);
-    session.supervisor_verdicts.push(verdict);
-  }
-
-  complete(requestId: string, startedAt: number): void {
-    const session = this.get(requestId);
-    session.phase = 'complete';
-    session.metrics.duration_ms = Date.now() - startedAt;
-  }
-
-  fail(requestId: string, startedAt: number): void {
-    const session = this.get(requestId);
-    session.phase = 'failed';
-    session.metrics.duration_ms = Date.now() - startedAt;
-  }
-
-  list(): CouncilSession[] {
-    return Array.from(this.sessions.values());
-  }
-
-  delete(requestId: string): void {
-    this.sessions.delete(requestId);
-  }
+  return new MemoryStore();
 }
 
-// Singleton — one store per process lifetime.
-export const stateStore = new CouncilStateStore();
+// Singleton — one store per process.
+export const stateStore: SessionStore = createStore();

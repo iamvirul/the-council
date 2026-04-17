@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-18
+
+### Added
+- **Persistent session memory** — sessions now survive MCP server restarts via an optional `COUNCIL_PERSIST` env var:
+  - `memory` (default) — in-process LRU Map, no breaking change
+  - `file` — JSON files at `~/.council/sessions/<id>.json`, zero dependencies
+  - `sqlite` — SQLite at `~/.council/council.db` via `better-sqlite3`, WAL mode for safe concurrent access
+- **`SessionStore` interface** — all backends implement a common contract; swappable without touching orchestration code
+- **7-day session TTL** — file and SQLite backends auto-expire sessions older than 7 days on startup
+- **Startup validation** — unknown `COUNCIL_PERSIST` values emit a warning and fall back to memory
+
 ## [0.2.3] - 2026-04-13
 
 ### Changed
@@ -78,7 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/iamvirul/the-council/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/iamvirul/the-council/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/iamvirul/the-council/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/iamvirul/the-council/compare/v0.2.0...v0.2.1
