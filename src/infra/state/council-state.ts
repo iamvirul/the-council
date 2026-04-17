@@ -16,6 +16,13 @@ export type { SessionStore };
 // createRequire lets us synchronously load CJS-compatible modules inside ESM.
 const require = createRequire(import.meta.url);
 
+/**
+ * Selects and constructs the process-wide session store implementation based on the COUNCIL_PERSIST environment variable.
+ *
+ * If COUNCIL_PERSIST is 'file' or 'sqlite' the corresponding persistent store is returned; otherwise the in-memory store is returned (default: 'memory').
+ *
+ * @returns A `SessionStore` instance configured for the selected persistence mode ('memory', 'file', or 'sqlite').
+ */
 function createStore(): SessionStore {
   const mode = (process.env['COUNCIL_PERSIST'] ?? 'memory').toLowerCase();
 
