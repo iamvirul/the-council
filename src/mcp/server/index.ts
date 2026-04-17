@@ -50,7 +50,7 @@ export async function startServer(): Promise<void> {
     'orchestrate',
     'Route a problem through The Council. Complex problems invoke the Chancellor for planning then the Executor for implementation. Simple problems go straight to the Executor. Trivial tasks go to the Aide. Returns the full result plus a session ID for follow-up.',
     orchestrateSchema,
-    async ({ problem }) => {
+    async ({ problem }: { problem: string }) => {
       try {
         const result = await orchestrate(problem);
         return {
@@ -68,7 +68,7 @@ export async function startServer(): Promise<void> {
     'consult_chancellor',
     'Invoke the Chancellor (Claude Opus) directly for deep strategic analysis and planning. Returns a structured plan with steps, risks, and delegation guidance.',
     consultChancellorSchema,
-    async ({ problem, context }) => {
+    async ({ problem, context }: { problem: string; context?: string }) => {
       try {
         const response = await invokeChancellor({ problem, context });
         return {
@@ -200,12 +200,14 @@ export async function startServer(): Promise<void> {
 
   process.on('SIGINT', async () => {
     logger.info('Shutting down (SIGINT)');
+    if (stateStore.close) stateStore.close();
     await server.close();
     process.exit(0);
   });
 
   process.on('SIGTERM', async () => {
     logger.info('Shutting down (SIGTERM)');
+    if (stateStore.close) stateStore.close();
     await server.close();
     process.exit(0);
   });

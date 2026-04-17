@@ -19,10 +19,8 @@ export class MemoryStore implements SessionStore {
 
   create(problem: string): CouncilSession {
     if (this.sessions.size >= MAX_SESSIONS) {
-      const oldest = [...this.sessions.values()].sort(
-        (a, b) => a.created_at.localeCompare(b.created_at),
-      )[0];
-      if (oldest) this.sessions.delete(oldest.request_id);
+      const oldestKey = this.sessions.keys().next().value;
+      if (oldestKey) this.sessions.delete(oldestKey);
     }
 
     const session: CouncilSession = {
@@ -42,11 +40,18 @@ export class MemoryStore implements SessionStore {
   get(requestId: string): CouncilSession {
     const session = this.sessions.get(requestId);
     if (!session) throw new CouncilError(`Session not found: ${requestId}`, 'SESSION_NOT_FOUND');
+    this.sessions.delete(requestId);
+    this.sessions.set(requestId, session);
     return session;
   }
 
   getOptional(requestId: string): CouncilSession | undefined {
-    return this.sessions.get(requestId);
+    const session = this.sessions.get(requestId);
+    if (session) {
+      this.sessions.delete(requestId);
+      this.sessions.set(requestId, session);
+    }
+    return session;
   }
 
   setPhase(requestId: string, phase: SessionPhase): void {

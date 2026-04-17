@@ -28,4 +28,5 @@ export interface SessionStore {
   fail(requestId: string, startedAt: number): void;
   list(): CouncilSession[];
   delete(requestId: string): void;
+  close?(): void;
 }

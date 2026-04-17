@@ -98,7 +98,8 @@ export type CouncilErrorCode =
   | 'SESSION_NOT_FOUND'
   | 'ORCHESTRATION_FAILED'
   | 'AGENT_PARSE_ERROR'
-  | 'SUPERVISOR_ERROR';
+  | 'SUPERVISOR_ERROR'
+  | 'SESSION_PARSE_ERROR';
 
 export class CouncilError extends Error {
   constructor(
