@@ -44,6 +44,15 @@ if (!process.env['ANTHROPIC_API_KEY'] && !findClaude()) {
   process.exit(1);
 }
 
+// Validate COUNCIL_PERSIST value early so misconfiguration fails fast.
+const persistMode = (process.env['COUNCIL_PERSIST'] ?? 'memory').toLowerCase();
+if (!['memory', 'file', 'sqlite'].includes(persistMode)) {
+  process.stderr.write(
+    `Warning: unknown COUNCIL_PERSIST="${persistMode}" — falling back to memory.\n` +
+    `Valid values: memory | file | sqlite\n`,
+  );
+}
+
 import { startServer } from './mcp/server/index.js';
 
 startServer().catch((err: unknown) => {
