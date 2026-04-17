@@ -134,7 +134,7 @@ By default sessions are stored in memory and cleared when the MCP server restart
 }
 ```
 
-Sessions are automatically expired after 7 days in file and SQLite modes.
+Sessions older than 7 days are automatically expired on startup and periodically in file and SQLite modes.
 
 ### Registries
 

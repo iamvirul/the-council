@@ -27,15 +27,25 @@ function createStore(): SessionStore {
   const mode = (process.env['COUNCIL_PERSIST'] ?? 'memory').toLowerCase();
 
   if (mode === 'file') {
-    const { FileStore } = require('./stores/file-store.js') as typeof import('./stores/file-store.js');
-    logger.info({ mode: 'file' }, 'Session persistence: file (~/.council/sessions/)');
-    return new FileStore();
+    try {
+      const { FileStore } = require('./stores/file-store.js') as typeof import('./stores/file-store.js');
+      logger.info({ mode: 'file' }, 'Session persistence: file (~/.council/sessions/)');
+      return new FileStore();
+    } catch (err) {
+      logger.error({ mode: 'file', path: '~/.council/sessions/', err }, 'FileStore initialization failed — falling back to memory');
+      return new MemoryStore();
+    }
   }
 
   if (mode === 'sqlite') {
-    const { SQLiteStore } = require('./stores/sqlite-store.js') as typeof import('./stores/sqlite-store.js');
-    logger.info({ mode: 'sqlite' }, 'Session persistence: SQLite (~/.council/council.db)');
-    return new SQLiteStore();
+    try {
+      const { SQLiteStore } = require('./stores/sqlite-store.js') as typeof import('./stores/sqlite-store.js');
+      logger.info({ mode: 'sqlite' }, 'Session persistence: SQLite (~/.council/council.db)');
+      return new SQLiteStore();
+    } catch (err) {
+      logger.error({ mode: 'sqlite', path: '~/.council/council.db', err }, 'SQLiteStore initialization failed — falling back to memory');
+      return new MemoryStore();
+    }
   }
 
   if (mode !== 'memory') {

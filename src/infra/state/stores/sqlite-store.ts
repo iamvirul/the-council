@@ -25,6 +25,7 @@ const DB_PATH = join(DB_DIR, 'council.db');
 
 export class SQLiteStore implements SessionStore {
   private db: Database.Database;
+  private expirationTimer?: NodeJS.Timeout;
 
   constructor() {
     mkdirSync(DB_DIR, { recursive: true });
@@ -33,6 +34,8 @@ export class SQLiteStore implements SessionStore {
     this.db.pragma('foreign_keys = ON');
     this.bootstrap();
     this.expireOld();
+    this.expirationTimer = setInterval(() => this.expireOld(), 24 * 60 * 60 * 1000);
+    this.expirationTimer.unref();
     const count = (this.db.prepare('SELECT COUNT(*) as n FROM sessions').get() as { n: number }).n;
     logger.info({ db: DB_PATH, sessions: count }, 'SQLiteStore initialised');
   }
@@ -67,8 +70,17 @@ export class SQLiteStore implements SessionStore {
   }
 
   private read(requestId: string): CouncilSession | undefined {
-    const row = this.db.prepare('SELECT data FROM sessions WHERE id = ?').get(requestId) as { data: string } | undefined;
-    return row ? JSON.parse(row.data) as CouncilSession : undefined;
+    const cutoff = new Date(Date.now() - SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const row = this.db.prepare('SELECT data, created_at FROM sessions WHERE id = ? AND created_at >= ?').get(requestId, cutoff) as { data: string; created_at: string } | undefined;
+    if (!row) return undefined;
+    try {
+      return JSON.parse(row.data) as CouncilSession;
+    } catch (err) {
+      throw new CouncilError(
+        `Failed to parse session data for ${requestId}: ${row.data.slice(0, 100)}`,
+        'SESSION_PARSE_ERROR',
+      );
+    }
   }
 
   create(problem: string): CouncilSession {
@@ -156,11 +168,29 @@ export class SQLiteStore implements SessionStore {
   }
 
   list(): CouncilSession[] {
-    const rows = this.db.prepare('SELECT data FROM sessions ORDER BY created_at DESC').all() as { data: string }[];
-    return rows.map(r => JSON.parse(r.data) as CouncilSession);
+    const cutoff = new Date(Date.now() - SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const rows = this.db.prepare('SELECT data, id FROM sessions WHERE created_at >= ? ORDER BY created_at DESC').all(cutoff) as { data: string; id: string }[];
+    const sessions: CouncilSession[] = [];
+    for (const row of rows) {
+      try {
+        sessions.push(JSON.parse(row.data) as CouncilSession);
+      } catch (err) {
+        logger.warn({ id: row.id, err }, 'SQLiteStore: skipping row with corrupt JSON');
+      }
+    }
+    return sessions;
   }
 
   delete(requestId: string): void {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(requestId);
+  }
+
+  close(): void {
+    if (this.expirationTimer) {
+      clearInterval(this.expirationTimer);
+      this.expirationTimer = undefined;
+    }
+    this.db.close();
+    logger.info('SQLiteStore closed');
   }
 }

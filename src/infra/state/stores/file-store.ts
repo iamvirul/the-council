@@ -2,7 +2,7 @@
 // Each session is stored as ~/.council/sessions/<session_id>.json
 // Sessions older than SESSION_TTL_DAYS are expired on startup.
 // Enable with: COUNCIL_PERSIST=file
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, renameSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import type {
@@ -19,6 +19,7 @@ import type { SessionStore } from '../session-store.js';
 import { logger } from '../../logging/logger.js';
 
 const SESSION_TTL_DAYS = 7;
+const MAX_SESSIONS = 500;
 const SESSIONS_DIR = join(homedir(), '.council', 'sessions');
 
 export class FileStore implements SessionStore {
@@ -28,6 +29,7 @@ export class FileStore implements SessionStore {
     mkdirSync(SESSIONS_DIR, { recursive: true });
     this.loadAll();
     this.expireOld();
+    setInterval(() => this.expireOld(), 6 * 60 * 60 * 1000).unref();
     logger.info({ dir: SESSIONS_DIR, sessions: this.cache.size }, 'FileStore initialised');
   }
 
@@ -37,7 +39,10 @@ export class FileStore implements SessionStore {
 
   private persist(session: CouncilSession): void {
     try {
-      writeFileSync(this.sessionPath(session.request_id), JSON.stringify(session, null, 2), 'utf8');
+      const sessionPath = this.sessionPath(session.request_id);
+      const tmpPath = sessionPath + '.tmp';
+      writeFileSync(tmpPath, JSON.stringify(session, null, 2), 'utf8');
+      renameSync(tmpPath, sessionPath);
     } catch (err) {
       logger.error({ requestId: session.request_id, err }, 'FileStore: failed to write session');
     }
@@ -50,9 +55,13 @@ export class FileStore implements SessionStore {
       try {
         const raw = readFileSync(join(SESSIONS_DIR, file), 'utf8');
         const session = JSON.parse(raw) as CouncilSession;
-        this.cache.set(session.request_id, session);
-      } catch {
-        // Corrupt file — skip silently
+        if (session.request_id) {
+          this.cache.set(session.request_id, session);
+        } else {
+          logger.warn({ file }, 'FileStore: skipping session file with missing request_id');
+        }
+      } catch (err) {
+        logger.warn({ file, err }, 'FileStore: skipping corrupt session file');
       }
     }
   }
@@ -71,6 +80,16 @@ export class FileStore implements SessionStore {
   }
 
   create(problem: string): CouncilSession {
+    if (this.cache.size >= MAX_SESSIONS) {
+      const oldest = [...this.cache.values()].sort(
+        (a, b) => a.created_at.localeCompare(b.created_at),
+      )[0];
+      if (oldest) {
+        this.cache.delete(oldest.request_id);
+        try { unlinkSync(this.sessionPath(oldest.request_id)); } catch { /* already gone */ }
+      }
+    }
+
     const session: CouncilSession = {
       request_id: crypto.randomUUID(),
       created_at: new Date().toISOString(),
