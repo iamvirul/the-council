@@ -70,7 +70,7 @@ export async function startServer(): Promise<void> {
     consultChancellorSchema,
     async ({ problem, context }: { problem: string; context?: string }) => {
       try {
-        const response = await invokeChancellor({ problem, context });
+        const response = await invokeChancellor({ problem, context, skipCaveman: true });
         return {
           content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
         };
@@ -91,6 +91,7 @@ export async function startServer(): Promise<void> {
         const response = await invokeExecutor({
           problem: task,
           context: plan_context,
+          skipCaveman: true,
         });
 
         if (session_id) {
@@ -120,7 +121,7 @@ export async function startServer(): Promise<void> {
     async ({ task, task_id, context, session_id }) => {
       try {
         const resolvedTaskId = task_id ?? crypto.randomUUID();
-        const response = await invokeAide(resolvedTaskId, { problem: task, context });
+        const response = await invokeAide(resolvedTaskId, { problem: task, context, skipCaveman: true });
 
         if (session_id) {
           try {

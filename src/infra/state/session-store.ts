@@ -24,6 +24,7 @@ export interface SessionStore {
   recordExecutorResult(requestId: string, result: ExecutorResponse): void;
   recordAideResult(requestId: string, result: AideResponse): void;
   recordSupervisorVerdict(requestId: string, verdict: SupervisorVerdict): void;
+  recordCavemanMode(requestId: string, mode: string): void;
   complete(requestId: string, startedAt: number): void;
   fail(requestId: string, startedAt: number): void;
   list(): CouncilSession[];
