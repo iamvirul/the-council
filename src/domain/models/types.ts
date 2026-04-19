@@ -87,6 +87,8 @@ export interface CouncilSession {
     total_agent_calls: number;
     agents_invoked: AgentRole[];
     duration_ms?: number;
+    /** Caveman compression mode active during this session ('off' when disabled). */
+    caveman_mode?: string;
   };
 }
 

@@ -53,6 +53,15 @@ if (!['memory', 'file', 'sqlite'].includes(persistMode)) {
   );
 }
 
+// Validate COUNCIL_CAVEMAN value early — unknown values default to 'off'.
+const cavemanMode = (process.env['COUNCIL_CAVEMAN'] ?? 'off').toLowerCase();
+if (!['off', 'lite', 'full', 'ultra'].includes(cavemanMode)) {
+  process.stderr.write(
+    `Warning: unknown COUNCIL_CAVEMAN="${cavemanMode}" — falling back to off.\n` +
+    `Valid values: off | lite | full | ultra\n`,
+  );
+}
+
 import { startServer } from './mcp/server/index.js';
 
 startServer().catch((err: unknown) => {

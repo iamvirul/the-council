@@ -6,6 +6,7 @@ import { stateStore } from '../../infra/state/council-state.js';
 import { logger } from '../../infra/logging/logger.js';
 import { CouncilError } from '../../domain/models/types.js';
 import type { CouncilSession } from '../../domain/models/types.js';
+import { CAVEMAN_MODE } from '../../infra/config/caveman.js';
 
 // ─── Complexity heuristic ─────────────────────────────────────────────────────
 // Deterministic, no LLM call — avoids spending tokens on a meta-decision.
@@ -47,7 +48,10 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
   const startedAt = Date.now();
   const complexity = assessComplexity(problem);
 
-  logger.info({ request_id, complexity }, 'Orchestration started');
+  // Record caveman mode in session metrics so it's visible in get_council_state.
+  session.metrics.caveman_mode = CAVEMAN_MODE;
+
+  logger.info({ request_id, complexity, cavemanMode: CAVEMAN_MODE }, 'Orchestration started');
 
   try {
     if (complexity === 'trivial') {

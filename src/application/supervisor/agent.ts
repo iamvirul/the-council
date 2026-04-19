@@ -30,6 +30,8 @@ export async function invokeSupervisor(ctx: SupervisorContext): Promise<Supervis
     systemPrompt: SUPERVISOR_SYSTEM_PROMPT,
     userMessage,
     maxTurns: MAX_TURNS.SUPERVISOR,
+    // Supervisor recommendation is user-facing prose — skip compression.
+    skipCaveman: true,
   });
 
   const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
