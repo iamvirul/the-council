@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Caveman token compression** — reduce internal agent output tokens by 50-60% with no accuracy loss. Inspired by [Caveman](https://github.com/JuliusBrussee/caveman). Set `COUNCIL_CAVEMAN` in the MCP env block:
+  - `off` (default) — no compression, unchanged behaviour
+  - `lite` — drops filler and pleasantries, keeps grammar (~20% savings)
+  - `full` — fragments, flat bullets, explicit 50% word budget (~50-60% savings, recommended)
+  - `ultra` — telegraphic abbreviations and symbols (~60-70% savings)
+- Compression applies to Chancellor, Executor, and Aide. Supervisor is exempt — its recommendation field is user-facing prose.
+- Active mode recorded in `session.metrics.caveman_mode`, visible via `get_council_state`
+
 ## [0.3.0] - 2026-04-18
 
 ### Added

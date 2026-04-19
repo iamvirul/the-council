@@ -136,6 +136,37 @@ By default sessions are stored in memory and cleared when the MCP server restart
 
 Sessions older than 7 days are automatically expired on startup and periodically in file and SQLite modes.
 
+### Token compression (optional)
+
+The Council can make multiple agent calls per orchestration. Enable Caveman compression to reduce output tokens from internal agents (Chancellor, Executor, Aide) by up to 50-60%, with no loss of technical accuracy. The Supervisor is exempt — its user-facing recommendation stays in normal prose.
+
+Add `COUNCIL_CAVEMAN` to the env block:
+
+| Value | Style | Measured savings |
+|---|---|---|
+| `off` | Normal verbose output (default) | — |
+| `lite` | Drop filler and pleasantries, keep grammar | ~20% |
+| `full` | Fragments, flat bullets, 50% word budget enforced | ~50-60% |
+| `ultra` | Telegraphic, abbreviations, symbols | ~60-70% |
+
+```json
+{
+  "mcpServers": {
+    "the-council": {
+      "command": "npx",
+      "args": ["-y", "council-mcp"],
+      "env": {
+        "PATH": "/path/to/claude/bin:/usr/local/bin:/usr/bin:/bin",
+        "COUNCIL_PERSIST": "sqlite",
+        "COUNCIL_CAVEMAN": "full"
+      }
+    }
+  }
+}
+```
+
+`full` is the recommended setting — it hits the target savings without sacrificing readability of intermediate agent outputs. The active mode is recorded in each session's `metrics.caveman_mode` field, visible via `get_council_state`.
+
 ### Registries
 
 The package is published to two registries on every release:
@@ -189,7 +220,7 @@ Use `get_council_state` at any point to inspect a session. Each session tracks:
 - Executor step results
 - Aide task results
 - Supervisor verdicts (one per Executor step and Aide task)
-- Metrics: total agent calls, agents invoked, duration
+- Metrics: total agent calls, agents invoked, duration, caveman mode
 
 ---
 
@@ -223,7 +254,8 @@ src/
     supervisor/     # Supervisor agent wrapper (non-blocking quality review)
   infra/            # External dependencies
     agent-sdk/      # runner.ts - spawns claude CLI subprocess for each agent
-    state/          # In-process session state store (LRU, 500 session cap)
+    config/         # caveman.ts - token compression mode config
+    state/          # Session store: memory / file / SQLite backends
     logging/        # pino structured logger (stderr only)
   mcp/
     server/         # MCP server setup, tool registration, lifecycle

@@ -9,6 +9,7 @@ import { tmpdir } from 'os';
 import type { AgentRole } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
 import { logger } from '../logging/logger.js';
+import { applyCaveman, CAVEMAN_MODE } from '../config/caveman.js';
 
 export interface RunAgentParams {
   role: AgentRole;
@@ -18,6 +19,11 @@ export interface RunAgentParams {
   maxTurns: number;
   /** Tools the sub-agent is allowed to use. Defaults to [] (reasoning only). */
   tools?: string[];
+  /**
+   * When true, skips caveman compression regardless of COUNCIL_CAVEMAN.
+   * Set for the Supervisor — its recommendation field is user-facing prose.
+   */
+  skipCaveman?: boolean;
 }
 
 // Resolve the claude binary once at startup.
@@ -64,14 +70,17 @@ logger.info({ claude: CLAUDE_BIN }, 'claude CLI resolved');
  * if Claude Code is already installed.
  */
 export async function runAgent(params: RunAgentParams): Promise<string> {
-  const { role, model, systemPrompt, userMessage, maxTurns, tools = [] } = params;
+  const { role, model, systemPrompt, userMessage, maxTurns, tools = [], skipCaveman = false } = params;
 
-  logger.info({ role, model, toolCount: tools.length }, 'Invoking council agent');
+  logger.info({ role, model, toolCount: tools.length, cavemanMode: skipCaveman ? 'off' : CAVEMAN_MODE }, 'Invoking council agent');
+
+  // Apply caveman compression to the system prompt unless this agent is exempt.
+  const effectiveSystemPrompt = skipCaveman ? systemPrompt : applyCaveman(systemPrompt);
 
   // Write system prompt to a temp file to avoid shell arg length/escaping issues
   const tmpDir = mkdtempSync(join(tmpdir(), 'council-'));
   const systemPromptFile = join(tmpDir, 'system.txt');
-  writeFileSync(systemPromptFile, systemPrompt, 'utf8');
+  writeFileSync(systemPromptFile, effectiveSystemPrompt, 'utf8');
 
   const args = [
     '-p', userMessage,

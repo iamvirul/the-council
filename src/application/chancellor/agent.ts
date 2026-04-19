@@ -16,6 +16,7 @@ export async function invokeChancellor(opts: AgentInvokeOptions): Promise<Chance
     systemPrompt: CHANCELLOR_SYSTEM_PROMPT,
     userMessage,
     maxTurns: opts.max_turns ?? MAX_TURNS.CHANCELLOR,
+    skipCaveman: opts.skipCaveman,
   });
 
   // Extract JSON from inside a code fence if present, otherwise use the raw string.

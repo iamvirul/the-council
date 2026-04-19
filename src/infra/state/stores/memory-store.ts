@@ -87,6 +87,10 @@ export class MemoryStore implements SessionStore {
     this.get(requestId).supervisor_verdicts.push(verdict);
   }
 
+  recordCavemanMode(requestId: string, mode: string): void {
+    this.get(requestId).metrics.caveman_mode = mode;
+  }
+
   complete(requestId: string, startedAt: number): void {
     const s = this.get(requestId);
     s.phase = 'complete';
