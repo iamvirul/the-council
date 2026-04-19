@@ -19,6 +19,7 @@ export async function invokeAide(
     systemPrompt: AIDE_SYSTEM_PROMPT,
     userMessage,
     maxTurns: opts.max_turns ?? MAX_TURNS.AIDE,
+    skipCaveman: opts.skipCaveman,
   });
 
   const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);

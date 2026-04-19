@@ -121,4 +121,5 @@ export interface AgentInvokeOptions {
   problem: string;
   context?: string;
   max_turns?: number;
+  skipCaveman?: boolean;
 }

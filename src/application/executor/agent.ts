@@ -16,6 +16,7 @@ export async function invokeExecutor(opts: AgentInvokeOptions): Promise<Executor
     systemPrompt: EXECUTOR_SYSTEM_PROMPT,
     userMessage,
     maxTurns: opts.max_turns ?? MAX_TURNS.EXECUTOR,
+    skipCaveman: opts.skipCaveman,
   });
 
   const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);

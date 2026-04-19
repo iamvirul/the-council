@@ -49,7 +49,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
   const complexity = assessComplexity(problem);
 
   // Record caveman mode in session metrics so it's visible in get_council_state.
-  session.metrics.caveman_mode = CAVEMAN_MODE;
+  stateStore.recordCavemanMode(request_id, CAVEMAN_MODE);
 
   logger.info({ request_id, complexity, cavemanMode: CAVEMAN_MODE }, 'Orchestration started');
 

@@ -153,6 +153,12 @@ export class SQLiteStore implements SessionStore {
     this.write(s);
   }
 
+  recordCavemanMode(requestId: string, mode: string): void {
+    const s = this.get(requestId);
+    s.metrics.caveman_mode = mode;
+    this.write(s);
+  }
+
   complete(requestId: string, startedAt: number): void {
     const s = this.get(requestId);
     s.phase = 'complete';
