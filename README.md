@@ -138,7 +138,7 @@ Sessions older than 7 days are automatically expired on startup and periodically
 
 ### Token compression (optional)
 
-The Council fires 4+ agent calls per orchestration. Enable Caveman compression to reduce output tokens from internal agents (Chancellor, Executor, Aide) by up to 50-60%, with no loss of technical accuracy. The Supervisor is exempt — its user-facing recommendation stays in normal prose.
+The Council can make multiple agent calls per orchestration. Enable Caveman compression to reduce output tokens from internal agents (Chancellor, Executor, Aide) by up to 50-60%, with no loss of technical accuracy. The Supervisor is exempt — its user-facing recommendation stays in normal prose.
 
 Add `COUNCIL_CAVEMAN` to the env block:
 
