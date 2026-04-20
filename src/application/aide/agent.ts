@@ -1,10 +1,18 @@
 import { runAgent } from '../../infra/agent-sdk/runner.js';
-import { AIDE_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS } from '../../domain/constants/index.js';
+import { AIDE_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS, AGENT_TOOLS } from '../../domain/constants/index.js';
 import { AideResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, AideResponse } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
 import { logger } from '../../infra/logging/logger.js';
 
+/**
+ * Invokes the "aide" agent with a constructed user message and returns the parsed, validated response.
+ *
+ * @param taskId - The task identifier included in the agent message
+ * @param opts - Invocation options (`problem`, optional `context`, optional `max_turns`, optional `skipCaveman`)
+ * @returns The validated AideResponse parsed from the agent's JSON output
+ * @throws CouncilError when the agent returns invalid JSON or a value that fails schema validation (code: 'INVALID_JSON_RESPONSE')
+ */
 export async function invokeAide(
   taskId: string,
   opts: AgentInvokeOptions,
@@ -19,6 +27,7 @@ export async function invokeAide(
     systemPrompt: AIDE_SYSTEM_PROMPT,
     userMessage,
     maxTurns: opts.max_turns ?? MAX_TURNS.AIDE,
+    tools: AGENT_TOOLS.AIDE,
     skipCaveman: opts.skipCaveman,
   });
 

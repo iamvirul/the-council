@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Per-agent tool access** — Chancellor and Aide now have tool access, configurable via `AGENT_TOOLS` constants:
+  - Chancellor: `Read`, `Glob`, `Grep` (read-only — inspects codebase before planning, never writes)
+  - Executor: `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep` (unchanged)
+  - Aide: `Read` (can read files before transforming them)
+  - Supervisor: none (pure review, no side effects)
+- `AGENT_TOOLS` constant in `src/domain/constants/index.ts` — single source of truth for all per-agent tool sets
+- Chancellor and Aide system prompts updated to describe their tool capabilities and when to use them
+- Removed `runExecutorWithTools` convenience wrapper — Executor now uses `runAgent` + `AGENT_TOOLS.EXECUTOR` directly, consistent with all other agents
 - **Caveman token compression** — reduce internal agent output tokens by 50-60% with no accuracy loss. Inspired by [Caveman](https://github.com/JuliusBrussee/caveman). Set `COUNCIL_CAVEMAN` in the MCP env block:
   - `off` (default) — no compression, unchanged behaviour
   - `lite` — drops filler and pleasantries, keeps grammar (~20% savings)
