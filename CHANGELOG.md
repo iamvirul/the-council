@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-20
+
 ### Added
 - **Per-agent tool access** — Chancellor and Aide now have tool access, configurable via `AGENT_TOOLS` constants:
   - Chancellor: `Read`, `Glob`, `Grep` (read-only — inspects codebase before planning, never writes)
@@ -106,7 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/iamvirul/the-council/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/iamvirul/the-council/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/iamvirul/the-council/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/iamvirul/the-council/compare/v0.2.1...v0.2.2
