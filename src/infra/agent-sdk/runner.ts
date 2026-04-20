@@ -65,9 +65,17 @@ const CLAUDE_BIN = resolveClaude();
 logger.info({ claude: CLAUDE_BIN }, 'claude CLI resolved');
 
 /**
- * Runs a Claude sub-agent via the claude CLI and returns the final result text.
- * Works with OAuth (Claude.ai subscription) and ANTHROPIC_API_KEY — no extra cost
- * if Claude Code is already installed.
+ * Invoke the Claude CLI as a sub-agent to produce the agent's final text output.
+ *
+ * This will run the installed `claude` binary with the provided prompts and options. If
+ * `ANTHROPIC_API_KEY` is unset or empty in the environment passed to this process, the
+ * key is removed for the child process so the CLI falls back to any configured OAuth
+ * (Claude Code) session.
+ *
+ * @param params.tools - Optional list of tool names to permit; when empty, no `--allowedTools` flag is passed
+ * @param params.skipCaveman - When true, do not apply caveman compression to the system prompt
+ * @returns The trimmed text output produced by the Claude CLI
+ * @throws {CouncilError} On spawn failures, non-zero CLI exit codes, or when the agent returns no output
  */
 export async function runAgent(params: RunAgentParams): Promise<string> {
   const { role, model, systemPrompt, userMessage, maxTurns, tools = [], skipCaveman = false } = params;
