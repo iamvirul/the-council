@@ -166,11 +166,3 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
     });
   });
 }
-
-// Convenience wrapper for the Executor — pre-configured with coding tools.
-export async function runExecutorWithTools(params: RunAgentParams): Promise<string> {
-  return runAgent({
-    ...params,
-    tools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
-  });
-}

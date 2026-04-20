@@ -1,5 +1,5 @@
 import { runAgent } from '../../infra/agent-sdk/runner.js';
-import { CHANCELLOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS } from '../../domain/constants/index.js';
+import { CHANCELLOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS, AGENT_TOOLS } from '../../domain/constants/index.js';
 import { ChancellorResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, ChancellorResponse } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
@@ -16,6 +16,7 @@ export async function invokeChancellor(opts: AgentInvokeOptions): Promise<Chance
     systemPrompt: CHANCELLOR_SYSTEM_PROMPT,
     userMessage,
     maxTurns: opts.max_turns ?? MAX_TURNS.CHANCELLOR,
+    tools: AGENT_TOOLS.CHANCELLOR,
     skipCaveman: opts.skipCaveman,
   });
 

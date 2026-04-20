@@ -32,9 +32,9 @@ Complexity routing uses a fast keyword + word count check with no extra LLM call
 
 | Agent | Model | Role | Tools | Max turns |
 |---|---|---|---|---|
-| **Chancellor** | `claude-opus-4-6` | Deep analysis, planning, risk assessment | None (pure reasoning) | 3 |
+| **Chancellor** | `claude-opus-4-6` | Deep analysis, planning, risk assessment | `Read`, `Glob`, `Grep` (read-only) | 3 |
 | **Executor** | `claude-sonnet-4-6` | Implementation, code, delegation | `Read`, `Write`, `Edit`, `Bash`, `Glob`, `Grep` | 10 |
-| **Aide** | `claude-haiku-4-5` | Formatting, data transformation, utilities | None (pure reasoning) | 3 |
+| **Aide** | `claude-haiku-4-5` | Formatting, data transformation, utilities | `Read` | 3 |
 | **Supervisor** | `claude-haiku-4-5` | Output review, quality flags, intent alignment | None (pure reasoning) | 2 |
 
 The Supervisor is **advisory only** — it annotates and flags, never blocks. If the Supervisor errors, orchestration continues and a warning is logged.

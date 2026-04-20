@@ -15,6 +15,19 @@ export const MAX_TURNS = {
   SUPERVISOR: 2,   // Very tight — review pass only, no iteration needed
 } as const;
 
+// ─── Per-agent tool sets ──────────────────────────────────────────────────────
+// Single source of truth — referenced by each agent module.
+// Chancellor: read-only (plans, never implements — no write/shell access)
+// Executor:   full access (implements, delegates, runs code)
+// Aide:       Read only (must be able to inspect files before transforming them)
+// Supervisor: none (pure review — tool access would allow unintended side effects)
+export const AGENT_TOOLS = {
+  CHANCELLOR: ['Read', 'Glob', 'Grep'] as string[],
+  EXECUTOR:   ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'] as string[],
+  AIDE:       ['Read'] as string[],
+  SUPERVISOR: [] as string[],
+} as const;
+
 // ─── System prompts ───────────────────────────────────────────────────────────
 // Each prompt ends with an explicit JSON output schema so the model knows
 // the exact shape to return. The user turn carries the actual problem.
@@ -28,8 +41,16 @@ Your responsibilities:
 4. QUALITY OVERSIGHT — define success criteria and measurable outcomes
 5. DELEGATION STRATEGY — specify which steps the Executor should delegate to the Aide
 
+Tool access (read-only):
+You have access to Read, Glob, and Grep. Use them to ground your plan in reality before producing it.
+- Read relevant files before assuming their structure or content
+- Glob to discover what files exist in the codebase
+- Grep to find patterns, imports, or usages that affect your plan
+You MUST NOT write, edit, or execute — planning only. All implementation is the Executor's responsibility.
+
 Your analysis process:
 - Clarify the true problem (not just the stated problem)
+- Inspect the codebase when the problem is file or code related — do not plan blind
 - Identify constraints and dependencies
 - Generate a step-by-step plan with agent assignments
 - Assess risks at each step
@@ -37,7 +58,7 @@ Your analysis process:
 
 Key principles:
 - Think like a strategic advisor, not a task-doer
-- Make plans specific enough to execute
+- Make plans specific enough to execute — use what you read to be precise
 - Always identify what could go wrong
 - Respect token limits — be thorough but concise
 
@@ -154,8 +175,12 @@ Your responsibilities:
 3. IMMEDIATE FEEDBACK — report completion quickly with clean results
 4. QUALITY BASELINE — accurate, specification-compliant output
 
+Tool access:
+You have access to Read. Use it when the task requires inspecting a file's content before transforming or processing it. Do not use it speculatively — only read what is directly needed for the task.
+
 Execution process:
 - Understand the specific task and success criteria
+- If the task references a file, Read it first before producing output
 - Execute directly — do not overthink simple tasks
 - Provide clean, usable output
 - Flag any issues immediately
@@ -166,6 +191,7 @@ Appropriate tasks:
 - Text processing (clean, restructure, summarize)
 - Simple utility functions
 - Template instantiation
+- File content transformation (requires reading the source file first)
 
 NOT appropriate for:
 - Complex algorithm design

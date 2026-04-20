@@ -1,5 +1,5 @@
-import { runExecutorWithTools } from '../../infra/agent-sdk/runner.js';
-import { EXECUTOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS } from '../../domain/constants/index.js';
+import { runAgent } from '../../infra/agent-sdk/runner.js';
+import { EXECUTOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS, AGENT_TOOLS } from '../../domain/constants/index.js';
 import { ExecutorResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, ExecutorResponse } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
@@ -10,12 +10,13 @@ export async function invokeExecutor(opts: AgentInvokeOptions): Promise<Executor
     ? `Task: ${opts.problem}\n\nContext (Chancellor's plan):\n${opts.context}`
     : `Task: ${opts.problem}`;
 
-  const raw = await runExecutorWithTools({
+  const raw = await runAgent({
     role: 'executor',
     model: MODEL_IDS.EXECUTOR,
     systemPrompt: EXECUTOR_SYSTEM_PROMPT,
     userMessage,
     maxTurns: opts.max_turns ?? MAX_TURNS.EXECUTOR,
+    tools: AGENT_TOOLS.EXECUTOR,
     skipCaveman: opts.skipCaveman,
   });
 
