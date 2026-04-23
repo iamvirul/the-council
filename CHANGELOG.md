@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Supervisor evaluation loop** — the Supervisor is now an active quality gate, not advisory only. When it rejects an agent output (`approved: false`), the orchestrator re-invokes the agent with the flags and recommendation appended as feedback, up to `COUNCIL_EVAL_RETRIES` times (default: 2 → 3 total attempts). If the retry budget is exhausted and the output is still flagged, the result is surfaced anyway with the flags visible — no silent passes.
+- `COUNCIL_EVAL_RETRIES` env var — clamped to `[0, 5]`. Set to `0` to restore pre-0.5 advisory-only behaviour. Non-integer values fall back to the default.
+- Retry count recorded in `session.metrics.eval_retries`, visible via `get_council_state` and in the result summary footer.
+- `supervisor_feedback` field added to `AgentInvokeOptions`; Executor and Aide prompts render a clearly-delimited `--- SUPERVISOR FEEDBACK ---` block when set.
+
 ## [0.4.0] - 2026-04-20
 
 ### Added
