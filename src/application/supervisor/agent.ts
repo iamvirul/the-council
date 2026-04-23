@@ -1,5 +1,4 @@
-import { runAgent } from '../../infra/agent-sdk/runner.js';
-import { parseAgentJson } from '../../infra/agent-sdk/parse.js';
+import { runAgentWithValidation } from '../../infra/agent-sdk/run-with-validation.js';
 import { SUPERVISOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS } from '../../domain/constants/index.js';
 import { SupervisorVerdictSchema } from '../../domain/models/schemas.js';
 import type { SupervisorVerdict } from '../../domain/models/types.js';
@@ -25,26 +24,26 @@ export async function invokeSupervisor(ctx: SupervisorContext): Promise<Supervis
     ctx.output,
   ].join('\n');
 
-  const raw = await runAgent({
-    role: 'supervisor',
-    model: MODEL_IDS.SUPERVISOR,
-    systemPrompt: SUPERVISOR_SYSTEM_PROMPT,
-    userMessage,
-    maxTurns: MAX_TURNS.SUPERVISOR,
-    // Supervisor recommendation is user-facing prose — skip compression.
-    skipCaveman: true,
-  });
-
   try {
-    const json = parseAgentJson(raw);
-    const parsed = SupervisorVerdictSchema.parse(json);
+    const parsed = await runAgentWithValidation(
+      {
+        role: 'supervisor',
+        model: MODEL_IDS.SUPERVISOR,
+        systemPrompt: SUPERVISOR_SYSTEM_PROMPT,
+        userMessage,
+        maxTurns: MAX_TURNS.SUPERVISOR,
+        // Supervisor recommendation is user-facing prose — skip compression.
+        skipCaveman: true,
+      },
+      SupervisorVerdictSchema,
+    );
     logger.debug(
       { subject: ctx.subject_id, subject_type: ctx.subject_type, approved: parsed.approved, flags: parsed.flags.length },
       'Supervisor verdict',
     );
     return parsed;
   } catch (err) {
-    logger.error({ raw: raw.slice(0, 500), err }, 'Failed to parse/validate Supervisor response');
+    logger.error({ err }, 'Supervisor failed after parse/validate retry');
     throw new CouncilError(
       'Supervisor returned an invalid or schema-violating response',
       'SUPERVISOR_ERROR',
