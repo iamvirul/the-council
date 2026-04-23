@@ -5,8 +5,15 @@ import { invokeSupervisor } from '../supervisor/agent.js';
 import { stateStore } from '../../infra/state/council-state.js';
 import { logger } from '../../infra/logging/logger.js';
 import { CouncilError } from '../../domain/models/types.js';
-import type { CouncilSession } from '../../domain/models/types.js';
+import type {
+  CouncilSession,
+  ExecutorResponse,
+  AideResponse,
+  SupervisorVerdict,
+  AgentInvokeOptions,
+} from '../../domain/models/types.js';
 import { CAVEMAN_MODE } from '../../infra/config/caveman.js';
+import { EVAL_RETRIES } from '../../infra/config/eval.js';
 
 // ─── Complexity heuristic ─────────────────────────────────────────────────────
 // Deterministic, no LLM call — avoids spending tokens on a meta-decision.
@@ -51,44 +58,41 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
   // Record caveman mode in session metrics so it's visible in get_council_state.
   stateStore.recordCavemanMode(request_id, CAVEMAN_MODE);
 
-  logger.info({ request_id, complexity, cavemanMode: CAVEMAN_MODE }, 'Orchestration started');
+  logger.info(
+    { request_id, complexity, cavemanMode: CAVEMAN_MODE, evalRetries: EVAL_RETRIES },
+    'Orchestration started',
+  );
 
   try {
     if (complexity === 'trivial') {
       // ── Trivial: go straight to Aide ─────────────────────────────────────
       stateStore.setPhase(request_id, 'executing');
-      stateStore.recordAgentCall(request_id, 'aide');
-
       const taskId = crypto.randomUUID();
-      const aideResult = await invokeAide(taskId, { problem });
-      stateStore.recordAideResult(request_id, aideResult);
-      await superviseAideTask(request_id, problem, problem, taskId, aideResult.result);
+      await runAideWithEval(request_id, problem, problem, taskId, { problem });
       stateStore.complete(request_id, startedAt);
 
+      const sessionNow = stateStore.get(request_id);
+      const finalAide = sessionNow.aide_results[sessionNow.aide_results.length - 1];
       return {
         request_id,
         complexity,
-        result: aideResult.result,
-        session: stateStore.get(request_id),
+        result: finalAide?.result ?? '',
+        session: sessionNow,
       };
     }
 
     if (complexity === 'simple') {
       // ── Simple: Executor only ─────────────────────────────────────────────
       stateStore.setPhase(request_id, 'executing');
-      stateStore.recordAgentCall(request_id, 'executor');
 
-      const execResult = await invokeExecutor({ problem });
-      stateStore.recordExecutorResult(request_id, execResult);
-      await superviseExecutorStep(request_id, problem, problem, execResult.step_id, execResult.result);
+      const execResult = await runExecutorWithEval(request_id, problem, problem, { problem });
 
-      // Handle any Aide delegations from the Executor
+      // Handle any Aide delegations from the final (approved or best-effort) Executor output.
       for (const task of execResult.delegated_tasks) {
         if (task.status === 'pending') {
-          stateStore.recordAgentCall(request_id, 'aide');
-          const aideResult = await invokeAide(task.task_id, { problem: task.description });
-          stateStore.recordAideResult(request_id, aideResult);
-          await superviseAideTask(request_id, problem, task.description, task.task_id, aideResult.result);
+          await runAideWithEval(request_id, problem, task.description, task.task_id, {
+            problem: task.description,
+          });
         }
       }
 
@@ -107,7 +111,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
     stateStore.recordAgentCall(request_id, 'chancellor');
 
     const chancellorPlan = await invokeChancellor({ problem });
-    stateStore.setChancellorPlan(request_id, chancellorPlan); // go through store, not direct mutation
+    stateStore.setChancellorPlan(request_id, chancellorPlan);
 
     logger.info(
       { request_id, steps: chancellorPlan.plan.length },
@@ -118,32 +122,28 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
 
     for (const step of chancellorPlan.plan) {
       logger.info({ request_id, step_id: step.id }, 'Executing plan step');
-      stateStore.recordAgentCall(request_id, 'executor');
-      stateStore.setCurrentStep(request_id, step.id); // go through store, not direct mutation
+      stateStore.setCurrentStep(request_id, step.id);
 
-      const execResult = await invokeExecutor({
+      const execResult = await runExecutorWithEval(request_id, problem, step.description, {
         problem: step.description,
         context: JSON.stringify({ plan: chancellorPlan, current_step: step }),
       });
 
-      stateStore.recordExecutorResult(request_id, execResult);
-      await superviseExecutorStep(request_id, problem, step.description, execResult.step_id, execResult.result);
-
-      // Handle Aide delegations
+      // Handle Aide delegations from the final Executor output.
       for (const task of execResult.delegated_tasks) {
         if (task.status === 'pending') {
-          stateStore.recordAgentCall(request_id, 'aide');
-          const aideResult = await invokeAide(task.task_id, {
+          await runAideWithEval(request_id, problem, task.description, task.task_id, {
             problem: task.description,
             context: `Part of step: ${step.description}`,
           });
-          stateStore.recordAideResult(request_id, aideResult);
-          await superviseAideTask(request_id, problem, task.description, task.task_id, aideResult.result);
         }
       }
 
       if (execResult.status === 'blocked') {
-        logger.warn({ request_id, step_id: step.id, blockers: execResult.blockers }, 'Step blocked');
+        logger.warn(
+          { request_id, step_id: step.id, blockers: execResult.blockers },
+          'Step blocked',
+        );
         // Continue to next step — partial completion is better than halting
       }
     }
@@ -171,68 +171,253 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
   }
 }
 
-// ─── Supervisor (non-blocking) ────────────────────────────────────────────────
-// Supervisor failure must never propagate — it is advisory only.
+// ─── Evaluation loop ──────────────────────────────────────────────────────────
+// Supervisor rejections trigger a re-invocation with feedback appended.
+// The loop is bounded by EVAL_RETRIES (default 2 → up to 3 total attempts).
+// If still rejected after retries, the flagged result is recorded and a
+// warning is logged — the flagged verdict surfaces via buildResultSummary,
+// so the caller always sees what the Supervisor flagged.
+//
+// Only the *final* attempt is recorded to the session result store. Every
+// Supervisor verdict is recorded — the retry count reconstructs the trail.
+// Supervisor failures themselves do NOT count as rejections; they are
+// treated as "approved with no verdict" to preserve the original
+// non-blocking behaviour when the Supervisor itself errors.
 
-async function superviseExecutorStep(
+async function runExecutorWithEval(
   requestId: string,
   problem: string,
   stepDescription: string,
-  stepId: string,
-  output: string,
-): Promise<void> {
-  try {
-    stateStore.recordAgentCall(requestId, 'supervisor');
-    const verdict = await invokeSupervisor({
-      subject_id: stepId,
+  opts: AgentInvokeOptions,
+): Promise<ExecutorResponse> {
+  let lastResult: ExecutorResponse | undefined;
+  let lastVerdict: SupervisorVerdict | undefined;
+  let feedback: string | undefined;
+
+  for (let attempt = 0; attempt <= EVAL_RETRIES; attempt++) {
+    stateStore.recordAgentCall(requestId, 'executor');
+
+    const result = await invokeExecutor({ ...opts, supervisor_feedback: feedback });
+    lastResult = result;
+
+    const verdict = await supervise(requestId, {
+      subject_id: result.step_id,
       subject_type: 'executor_step',
       original_problem: problem,
       intent: stepDescription,
-      output,
+      output: result.result,
     });
-    stateStore.recordSupervisorVerdict(requestId, verdict);
+    lastVerdict = verdict;
 
-    if (!verdict.approved) {
+    // No verdict (supervisor errored) or approved → accept.
+    if (!verdict || verdict.approved) break;
+
+    // Rejected and retries exhausted → stop.
+    if (attempt === EVAL_RETRIES) {
       logger.warn(
-        { request_id: requestId, step_id: stepId, flags: verdict.flags, recommendation: verdict.recommendation },
-        'Supervisor flagged executor step',
+        {
+          request_id: requestId,
+          step_id: result.step_id,
+          attempts: attempt + 1,
+          flags: verdict.flags,
+          recommendation: verdict.recommendation,
+        },
+        'Executor step still flagged after retry budget exhausted — surfacing anyway',
       );
+      break;
     }
-  } catch (err) {
-    logger.warn({ request_id: requestId, step_id: stepId, err }, 'Supervisor failed — continuing without verdict');
+
+    // Rejected and retries remain → loop with feedback.
+    stateStore.recordEvalRetry(requestId);
+    feedback = buildSupervisorFeedback(verdict);
+    logger.info(
+      {
+        request_id: requestId,
+        step_id: result.step_id,
+        attempt: attempt + 1,
+        next_attempt: attempt + 2,
+        flags: verdict.flags,
+      },
+      'Executor step rejected by Supervisor — re-running with feedback',
+    );
   }
+
+  // lastResult is always defined here — the loop runs at least once (EVAL_RETRIES >= 0
+  // means attempt 0 always executes), and invokeExecutor either returns a result or throws.
+  if (!lastResult) {
+    throw new CouncilError(
+      'Executor evaluation loop produced no result',
+      'ORCHESTRATION_FAILED',
+      'executor',
+    );
+  }
+
+  stateStore.recordExecutorResult(requestId, lastResult);
+  if (lastVerdict && !lastVerdict.approved) {
+    logger.warn(
+      {
+        request_id: requestId,
+        step_id: lastResult.step_id,
+        flags: lastVerdict.flags,
+        recommendation: lastVerdict.recommendation,
+      },
+      'Supervisor flagged final executor step output',
+    );
+  }
+  return lastResult;
 }
 
-async function superviseAideTask(
+async function runAideWithEval(
   requestId: string,
   problem: string,
   taskDescription: string,
   taskId: string,
-  output: string,
-): Promise<void> {
-  try {
-    stateStore.recordAgentCall(requestId, 'supervisor');
-    const verdict = await invokeSupervisor({
+  opts: AgentInvokeOptions,
+): Promise<AideResponse> {
+  let lastResult: AideResponse | undefined;
+  let lastVerdict: SupervisorVerdict | undefined;
+  let feedback: string | undefined;
+
+  for (let attempt = 0; attempt <= EVAL_RETRIES; attempt++) {
+    stateStore.recordAgentCall(requestId, 'aide');
+
+    const result = await invokeAide(taskId, { ...opts, supervisor_feedback: feedback });
+    lastResult = result;
+
+    const verdict = await supervise(requestId, {
       subject_id: taskId,
       subject_type: 'aide_task',
       original_problem: problem,
       intent: taskDescription,
-      output,
+      output: result.result,
     });
-    stateStore.recordSupervisorVerdict(requestId, verdict);
+    lastVerdict = verdict;
 
-    if (!verdict.approved) {
+    if (!verdict || verdict.approved) break;
+
+    if (attempt === EVAL_RETRIES) {
       logger.warn(
-        { request_id: requestId, task_id: taskId, flags: verdict.flags, recommendation: verdict.recommendation },
-        'Supervisor flagged aide task',
+        {
+          request_id: requestId,
+          task_id: taskId,
+          attempts: attempt + 1,
+          flags: verdict.flags,
+          recommendation: verdict.recommendation,
+        },
+        'Aide task still flagged after retry budget exhausted — surfacing anyway',
       );
+      break;
     }
+
+    stateStore.recordEvalRetry(requestId);
+    feedback = buildSupervisorFeedback(verdict);
+    logger.info(
+      {
+        request_id: requestId,
+        task_id: taskId,
+        attempt: attempt + 1,
+        next_attempt: attempt + 2,
+        flags: verdict.flags,
+      },
+      'Aide task rejected by Supervisor — re-running with feedback',
+    );
+  }
+
+  if (!lastResult) {
+    throw new CouncilError(
+      'Aide evaluation loop produced no result',
+      'ORCHESTRATION_FAILED',
+      'aide',
+    );
+  }
+
+  stateStore.recordAideResult(requestId, lastResult);
+  if (lastVerdict && !lastVerdict.approved) {
+    logger.warn(
+      {
+        request_id: requestId,
+        task_id: taskId,
+        flags: lastVerdict.flags,
+        recommendation: lastVerdict.recommendation,
+      },
+      'Supervisor flagged final aide task output',
+    );
+  }
+  return lastResult;
+}
+
+// ─── Supervisor call ──────────────────────────────────────────────────────────
+// Records the agent call + verdict. Returns undefined when the Supervisor
+// itself errors — callers must treat "no verdict" as approved so the
+// Supervisor's own failures never block the pipeline.
+
+interface SuperviseParams {
+  subject_id: string;
+  subject_type: 'executor_step' | 'aide_task';
+  original_problem: string;
+  intent: string;
+  output: string;
+}
+
+async function supervise(
+  requestId: string,
+  params: SuperviseParams,
+): Promise<SupervisorVerdict | undefined> {
+  try {
+    stateStore.recordAgentCall(requestId, 'supervisor');
+    const verdict = await invokeSupervisor(params);
+    stateStore.recordSupervisorVerdict(requestId, verdict);
+    return verdict;
   } catch (err) {
-    logger.warn({ request_id: requestId, task_id: taskId, err }, 'Supervisor failed — continuing without verdict');
+    logger.warn(
+      { request_id: requestId, subject_id: params.subject_id, err },
+      'Supervisor failed — continuing without verdict',
+    );
+    return undefined;
   }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Sentinels wrap Supervisor feedback inside the agent prompt so the model can
+// distinguish review notes from the task itself. Because Supervisor output is
+// LLM-generated and only surface-validated (max-length + type), a compromised
+// or jailbroken Supervisor could forge these markers to terminate the feedback
+// block early and inject instructions outside of it. `sanitizeFeedbackText`
+// strips any attempt at replaying the sentinels. Individual flags are also
+// flattened to a single line since they are meant to be short categorical
+// labels, not free-form paragraphs.
+const FEEDBACK_START = '--- SUPERVISOR FEEDBACK (previous attempt was rejected — address every flag below) ---';
+const FEEDBACK_END = '--- END SUPERVISOR FEEDBACK ---';
+const SENTINEL_REDACTOR = /---\s*(?:END\s+)?SUPERVISOR\s+FEEDBACK[^\n-]*---/gi;
+
+function sanitizeFeedbackText(text: string): string {
+  return text.replace(SENTINEL_REDACTOR, '[REDACTED]');
+}
+
+/**
+ * Formats a rejected Supervisor verdict as feedback for the next agent
+ * attempt. The block is wrapped in sentinel markers so the model knows
+ * where the feedback begins and ends. All content is sanitized first so
+ * a malicious Supervisor cannot forge the closing sentinel to inject
+ * instructions outside the block.
+ */
+function buildSupervisorFeedback(verdict: SupervisorVerdict): string {
+  const lines = [FEEDBACK_START];
+  if (verdict.flags.length > 0) {
+    lines.push('Flags:');
+    for (const flag of verdict.flags) {
+      // Flatten newlines — flags are short categorical labels.
+      const cleaned = sanitizeFeedbackText(flag).replace(/\s*\n\s*/g, ' ').trim();
+      if (cleaned) lines.push(`- ${cleaned}`);
+    }
+  }
+  if (verdict.recommendation) {
+    lines.push(`Recommendation: ${sanitizeFeedbackText(verdict.recommendation)}`);
+  }
+  lines.push(FEEDBACK_END);
+  return lines.join('\n');
+}
 
 function buildResultSummary(session: CouncilSession, startedAt: number): string {
   const lines: string[] = [];
@@ -271,8 +456,11 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
   }
 
   const durationMs = Date.now() - startedAt;
+  const retries = session.metrics.eval_retries ?? 0;
   lines.push(`---`);
-  lines.push(`Session: ${session.request_id} | Agents: ${session.metrics.agents_invoked.join(', ')} | Duration: ${durationMs}ms`);
+  lines.push(
+    `Session: ${session.request_id} | Agents: ${session.metrics.agents_invoked.join(', ')} | Duration: ${durationMs}ms | Retries: ${retries}`,
+  );
 
   return lines.join('\n');
 }
