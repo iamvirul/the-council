@@ -17,9 +17,10 @@ export async function invokeAide(
   taskId: string,
   opts: AgentInvokeOptions,
 ): Promise<AideResponse> {
-  const userMessage = opts.context
-    ? `Task ID: ${taskId}\nTask: ${opts.problem}\n\nContext: ${opts.context}`
-    : `Task ID: ${taskId}\nTask: ${opts.problem}`;
+  const parts: string[] = [`Task ID: ${taskId}`, `Task: ${opts.problem}`];
+  if (opts.context) parts.push('', `Context: ${opts.context}`);
+  if (opts.supervisor_feedback) parts.push('', opts.supervisor_feedback);
+  const userMessage = parts.join('\n');
 
   const raw = await runAgent({
     role: 'aide',

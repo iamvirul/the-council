@@ -13,9 +13,10 @@ import { logger } from '../../infra/logging/logger.js';
  * @throws CouncilError with code `"INVALID_JSON_RESPONSE"` when the agent's output cannot be parsed as JSON or fails schema validation.
  */
 export async function invokeExecutor(opts: AgentInvokeOptions): Promise<ExecutorResponse> {
-  const userMessage = opts.context
-    ? `Task: ${opts.problem}\n\nContext (Chancellor's plan):\n${opts.context}`
-    : `Task: ${opts.problem}`;
+  const parts: string[] = [`Task: ${opts.problem}`];
+  if (opts.context) parts.push('', `Context (Chancellor's plan):`, opts.context);
+  if (opts.supervisor_feedback) parts.push('', opts.supervisor_feedback);
+  const userMessage = parts.join('\n');
 
   const raw = await runAgent({
     role: 'executor',
