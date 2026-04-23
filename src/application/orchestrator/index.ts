@@ -14,6 +14,7 @@ import type {
 } from '../../domain/models/types.js';
 import { CAVEMAN_MODE } from '../../infra/config/caveman.js';
 import { EVAL_RETRIES } from '../../infra/config/eval.js';
+import { buildSupervisorFeedback } from './feedback.js';
 
 // ─── Complexity heuristic ─────────────────────────────────────────────────────
 // Deterministic, no LLM call — avoids spending tokens on a meta-decision.
@@ -184,17 +185,22 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
 // treated as "approved with no verdict" to preserve the original
 // non-blocking behaviour when the Supervisor itself errors.
 
-async function runExecutorWithEval(
+/**
+ * @internal Exported for unit tests. `maxRetries` defaults to EVAL_RETRIES;
+ * tests pass it explicitly instead of juggling env vars.
+ */
+export async function runExecutorWithEval(
   requestId: string,
   problem: string,
   stepDescription: string,
   opts: AgentInvokeOptions,
+  maxRetries: number = EVAL_RETRIES,
 ): Promise<ExecutorResponse> {
   let lastResult: ExecutorResponse | undefined;
   let lastVerdict: SupervisorVerdict | undefined;
   let feedback: string | undefined;
 
-  for (let attempt = 0; attempt <= EVAL_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     stateStore.recordAgentCall(requestId, 'executor');
 
     const result = await invokeExecutor({ ...opts, supervisor_feedback: feedback });
@@ -213,7 +219,7 @@ async function runExecutorWithEval(
     if (!verdict || verdict.approved) break;
 
     // Rejected and retries exhausted → stop.
-    if (attempt === EVAL_RETRIES) {
+    if (attempt === maxRetries) {
       logger.warn(
         {
           request_id: requestId,
@@ -267,18 +273,23 @@ async function runExecutorWithEval(
   return lastResult;
 }
 
-async function runAideWithEval(
+/**
+ * @internal Exported for unit tests. `maxRetries` defaults to EVAL_RETRIES;
+ * tests pass it explicitly instead of juggling env vars.
+ */
+export async function runAideWithEval(
   requestId: string,
   problem: string,
   taskDescription: string,
   taskId: string,
   opts: AgentInvokeOptions,
+  maxRetries: number = EVAL_RETRIES,
 ): Promise<AideResponse> {
   let lastResult: AideResponse | undefined;
   let lastVerdict: SupervisorVerdict | undefined;
   let feedback: string | undefined;
 
-  for (let attempt = 0; attempt <= EVAL_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     stateStore.recordAgentCall(requestId, 'aide');
 
     const result = await invokeAide(taskId, { ...opts, supervisor_feedback: feedback });
@@ -295,7 +306,7 @@ async function runAideWithEval(
 
     if (!verdict || verdict.approved) break;
 
-    if (attempt === EVAL_RETRIES) {
+    if (attempt === maxRetries) {
       logger.warn(
         {
           request_id: requestId,
@@ -378,46 +389,6 @@ async function supervise(
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-// Sentinels wrap Supervisor feedback inside the agent prompt so the model can
-// distinguish review notes from the task itself. Because Supervisor output is
-// LLM-generated and only surface-validated (max-length + type), a compromised
-// or jailbroken Supervisor could forge these markers to terminate the feedback
-// block early and inject instructions outside of it. `sanitizeFeedbackText`
-// strips any attempt at replaying the sentinels. Individual flags are also
-// flattened to a single line since they are meant to be short categorical
-// labels, not free-form paragraphs.
-const FEEDBACK_START = '--- SUPERVISOR FEEDBACK (previous attempt was rejected — address every flag below) ---';
-const FEEDBACK_END = '--- END SUPERVISOR FEEDBACK ---';
-const SENTINEL_REDACTOR = /---\s*(?:END\s+)?SUPERVISOR\s+FEEDBACK[^\n-]*---/gi;
-
-function sanitizeFeedbackText(text: string): string {
-  return text.replace(SENTINEL_REDACTOR, '[REDACTED]');
-}
-
-/**
- * Formats a rejected Supervisor verdict as feedback for the next agent
- * attempt. The block is wrapped in sentinel markers so the model knows
- * where the feedback begins and ends. All content is sanitized first so
- * a malicious Supervisor cannot forge the closing sentinel to inject
- * instructions outside the block.
- */
-function buildSupervisorFeedback(verdict: SupervisorVerdict): string {
-  const lines = [FEEDBACK_START];
-  if (verdict.flags.length > 0) {
-    lines.push('Flags:');
-    for (const flag of verdict.flags) {
-      // Flatten newlines — flags are short categorical labels.
-      const cleaned = sanitizeFeedbackText(flag).replace(/\s*\n\s*/g, ' ').trim();
-      if (cleaned) lines.push(`- ${cleaned}`);
-    }
-  }
-  if (verdict.recommendation) {
-    lines.push(`Recommendation: ${sanitizeFeedbackText(verdict.recommendation)}`);
-  }
-  lines.push(FEEDBACK_END);
-  return lines.join('\n');
-}
 
 function buildResultSummary(session: CouncilSession, startedAt: number): string {
   const lines: string[] = [];
