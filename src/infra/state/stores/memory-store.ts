@@ -31,7 +31,7 @@ export class MemoryStore implements SessionStore {
       executor_progress: { completed_steps: [], results: [] },
       aide_results: [],
       supervisor_verdicts: [],
-      metrics: { total_agent_calls: 0, agents_invoked: [] },
+      metrics: { total_agent_calls: 0, agents_invoked: [], eval_retries: 0 },
     };
     this.sessions.set(session.request_id, session);
     return session;
@@ -89,6 +89,11 @@ export class MemoryStore implements SessionStore {
 
   recordCavemanMode(requestId: string, mode: string): void {
     this.get(requestId).metrics.caveman_mode = mode;
+  }
+
+  recordEvalRetry(requestId: string): void {
+    const s = this.get(requestId);
+    s.metrics.eval_retries = (s.metrics.eval_retries ?? 0) + 1;
   }
 
   complete(requestId: string, startedAt: number): void {

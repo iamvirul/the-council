@@ -92,7 +92,7 @@ export class SQLiteStore implements SessionStore {
       executor_progress: { completed_steps: [], results: [] },
       aide_results: [],
       supervisor_verdicts: [],
-      metrics: { total_agent_calls: 0, agents_invoked: [] },
+      metrics: { total_agent_calls: 0, agents_invoked: [], eval_retries: 0 },
     };
     this.write(session);
     return session;
@@ -156,6 +156,12 @@ export class SQLiteStore implements SessionStore {
   recordCavemanMode(requestId: string, mode: string): void {
     const s = this.get(requestId);
     s.metrics.caveman_mode = mode;
+    this.write(s);
+  }
+
+  recordEvalRetry(requestId: string): void {
+    const s = this.get(requestId);
+    s.metrics.eval_retries = (s.metrics.eval_retries ?? 0) + 1;
     this.write(s);
   }
 
