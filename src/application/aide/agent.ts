@@ -1,4 +1,5 @@
 import { runAgent } from '../../infra/agent-sdk/runner.js';
+import { parseAgentJson } from '../../infra/agent-sdk/parse.js';
 import { AIDE_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS, AGENT_TOOLS } from '../../domain/constants/index.js';
 import { AideResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, AideResponse } from '../../domain/models/types.js';
@@ -32,11 +33,8 @@ export async function invokeAide(
     skipCaveman: opts.skipCaveman,
   });
 
-  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  const cleaned = fenceMatch ? fenceMatch[1].trim() : raw.trim();
-
   try {
-    const json: unknown = JSON.parse(cleaned);
+    const json = parseAgentJson(raw);
     const parsed = AideResponseSchema.parse(json);
     logger.debug({ task_id: taskId, status: parsed.status }, 'Aide response parsed and validated');
     return parsed;

@@ -1,4 +1,5 @@
 import { runAgent } from '../../infra/agent-sdk/runner.js';
+import { parseAgentJson } from '../../infra/agent-sdk/parse.js';
 import { CHANCELLOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS, AGENT_TOOLS } from '../../domain/constants/index.js';
 import { ChancellorResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, ChancellorResponse } from '../../domain/models/types.js';
@@ -30,13 +31,10 @@ export async function invokeChancellor(opts: AgentInvokeOptions): Promise<Chance
     skipCaveman: opts.skipCaveman,
   });
 
-  // Extract JSON from inside a code fence if present, otherwise use the raw string.
-  // Non-greedy match handles multiple fences in the response correctly.
-  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  const cleaned = fenceMatch ? fenceMatch[1].trim() : raw.trim();
-
   try {
-    const json: unknown = JSON.parse(cleaned);
+    // parseAgentJson tolerates fenced output, prose-wrapped JSON, and bare
+    // JSON — the CLI's output shape varies with model and load.
+    const json = parseAgentJson(raw);
     // Runtime schema validation — a type assertion alone gives no protection
     // against malformed or injected agent responses.
     const parsed = ChancellorResponseSchema.parse(json);

@@ -1,4 +1,5 @@
 import { runAgent } from '../../infra/agent-sdk/runner.js';
+import { parseAgentJson } from '../../infra/agent-sdk/parse.js';
 import { SUPERVISOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS } from '../../domain/constants/index.js';
 import { SupervisorVerdictSchema } from '../../domain/models/schemas.js';
 import type { SupervisorVerdict } from '../../domain/models/types.js';
@@ -34,11 +35,8 @@ export async function invokeSupervisor(ctx: SupervisorContext): Promise<Supervis
     skipCaveman: true,
   });
 
-  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  const cleaned = fenceMatch ? fenceMatch[1].trim() : raw.trim();
-
   try {
-    const json: unknown = JSON.parse(cleaned);
+    const json = parseAgentJson(raw);
     const parsed = SupervisorVerdictSchema.parse(json);
     logger.debug(
       { subject: ctx.subject_id, subject_type: ctx.subject_type, approved: parsed.approved, flags: parsed.flags.length },

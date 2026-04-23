@@ -1,4 +1,5 @@
 import { runAgent } from '../../infra/agent-sdk/runner.js';
+import { parseAgentJson } from '../../infra/agent-sdk/parse.js';
 import { EXECUTOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS, AGENT_TOOLS } from '../../domain/constants/index.js';
 import { ExecutorResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, ExecutorResponse } from '../../domain/models/types.js';
@@ -28,11 +29,8 @@ export async function invokeExecutor(opts: AgentInvokeOptions): Promise<Executor
     skipCaveman: opts.skipCaveman,
   });
 
-  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  const cleaned = fenceMatch ? fenceMatch[1].trim() : raw.trim();
-
   try {
-    const json: unknown = JSON.parse(cleaned);
+    const json = parseAgentJson(raw);
     const parsed = ExecutorResponseSchema.parse(json);
     logger.debug({ step_id: parsed.step_id, status: parsed.status }, 'Executor response parsed and validated');
     return parsed;
