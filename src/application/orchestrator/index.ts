@@ -199,6 +199,7 @@ export async function runExecutorWithEval(
   let lastResult: ExecutorResponse | undefined;
   let lastVerdict: SupervisorVerdict | undefined;
   let feedback: string | undefined;
+  let retriesExhausted = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     stateStore.recordAgentCall(requestId, 'executor');
@@ -220,6 +221,7 @@ export async function runExecutorWithEval(
 
     // Rejected and retries exhausted → stop.
     if (attempt === maxRetries) {
+      retriesExhausted = true;
       logger.warn(
         {
           request_id: requestId,
@@ -259,7 +261,7 @@ export async function runExecutorWithEval(
   }
 
   stateStore.recordExecutorResult(requestId, lastResult);
-  if (lastVerdict && !lastVerdict.approved) {
+  if (lastVerdict && !lastVerdict.approved && !retriesExhausted) {
     logger.warn(
       {
         request_id: requestId,
@@ -288,6 +290,7 @@ export async function runAideWithEval(
   let lastResult: AideResponse | undefined;
   let lastVerdict: SupervisorVerdict | undefined;
   let feedback: string | undefined;
+  let retriesExhausted = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     stateStore.recordAgentCall(requestId, 'aide');
@@ -307,6 +310,7 @@ export async function runAideWithEval(
     if (!verdict || verdict.approved) break;
 
     if (attempt === maxRetries) {
+      retriesExhausted = true;
       logger.warn(
         {
           request_id: requestId,
@@ -343,7 +347,7 @@ export async function runAideWithEval(
   }
 
   stateStore.recordAideResult(requestId, lastResult);
-  if (lastVerdict && !lastVerdict.approved) {
+  if (lastVerdict && !lastVerdict.approved && !retriesExhausted) {
     logger.warn(
       {
         request_id: requestId,

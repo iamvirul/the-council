@@ -26,6 +26,7 @@ const DEFAULT_DB_PATH = join(DEFAULT_DB_DIR, 'council.db');
 export class SQLiteStore implements SessionStore {
   private db: Database.Database;
   private expirationTimer?: NodeJS.Timeout;
+  private closed = false;
 
   /**
    * @param dbPath - Filesystem path for the SQLite database. Defaults to
@@ -203,11 +204,13 @@ export class SQLiteStore implements SessionStore {
   }
 
   close(): void {
+    if (this.closed) return;
     if (this.expirationTimer) {
       clearInterval(this.expirationTimer);
       this.expirationTimer = undefined;
     }
     this.db.close();
+    this.closed = true;
     logger.info('SQLiteStore closed');
   }
 }

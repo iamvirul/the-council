@@ -38,13 +38,16 @@ export function buildSupervisorFeedback(verdict: SupervisorVerdict): string {
   if (verdict.flags.length > 0) {
     lines.push('Flags:');
     for (const flag of verdict.flags) {
-      // Flatten newlines — flags are short categorical labels.
-      const cleaned = sanitizeFeedbackText(flag).replace(/\s*\n\s*/g, ' ').trim();
+      // Flatten newlines first, then sanitize — prevents split-sentinel bypass.
+      const flat = flag.replace(/\s*\n\s*/g, ' ').trim();
+      const cleaned = sanitizeFeedbackText(flat);
       if (cleaned) lines.push(`- ${cleaned}`);
     }
   }
   if (verdict.recommendation) {
-    lines.push(`Recommendation: ${sanitizeFeedbackText(verdict.recommendation)}`);
+    // Flatten newlines first, then sanitize — prevents split-sentinel bypass.
+    const flat = verdict.recommendation.replace(/\s*\n\s*/g, ' ').trim();
+    lines.push(`Recommendation: ${sanitizeFeedbackText(flat)}`);
   }
   lines.push(FEEDBACK_END);
   return lines.join('\n');
