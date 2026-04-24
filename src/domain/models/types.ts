@@ -84,11 +84,22 @@ export interface CouncilSession {
   aide_results: AideResponse[];
   supervisor_verdicts: SupervisorVerdict[];
   metrics: {
+    /**
+     * Raw count of agent invocations, including Supervisor reviews and every
+     * retry triggered by the evaluation loop. For "how many unique agents
+     * participated in this session", see `agents_invoked` instead.
+     */
     total_agent_calls: number;
+    /** Distinct set of agent roles that ran during this session. */
     agents_invoked: AgentRole[];
     duration_ms?: number;
     /** Caveman compression mode active during this session ('off' when disabled). */
     caveman_mode?: string;
+    /**
+     * Total number of Supervisor-triggered re-runs across all agent steps
+     * in this session. 0 means every agent output was approved on first pass.
+     */
+    eval_retries: number;
   };
 }
 
@@ -122,4 +133,11 @@ export interface AgentInvokeOptions {
   context?: string;
   max_turns?: number;
   skipCaveman?: boolean;
+  /**
+   * Optional Supervisor feedback from a previous rejected attempt.
+   * Appended to the user message so the agent can address flagged issues
+   * on the next attempt. Set by the orchestrator's evaluation loop —
+   * direct callers should leave this unset.
+   */
+  supervisor_feedback?: string;
 }

@@ -1,4 +1,4 @@
-import { runAgent } from '../../infra/agent-sdk/runner.js';
+import { runAgentWithValidation } from '../../infra/agent-sdk/run-with-validation.js';
 import { CHANCELLOR_SYSTEM_PROMPT, MODEL_IDS, MAX_TURNS, AGENT_TOOLS } from '../../domain/constants/index.js';
 import { ChancellorResponseSchema } from '../../domain/models/schemas.js';
 import type { AgentInvokeOptions, ChancellorResponse } from '../../domain/models/types.js';
@@ -20,30 +20,23 @@ export async function invokeChancellor(opts: AgentInvokeOptions): Promise<Chance
     ? `Problem: ${opts.problem}\n\nContext: ${opts.context}`
     : `Problem: ${opts.problem}`;
 
-  const raw = await runAgent({
-    role: 'chancellor',
-    model: MODEL_IDS.CHANCELLOR,
-    systemPrompt: CHANCELLOR_SYSTEM_PROMPT,
-    userMessage,
-    maxTurns: opts.max_turns ?? MAX_TURNS.CHANCELLOR,
-    tools: AGENT_TOOLS.CHANCELLOR,
-    skipCaveman: opts.skipCaveman,
-  });
-
-  // Extract JSON from inside a code fence if present, otherwise use the raw string.
-  // Non-greedy match handles multiple fences in the response correctly.
-  const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  const cleaned = fenceMatch ? fenceMatch[1].trim() : raw.trim();
-
   try {
-    const json: unknown = JSON.parse(cleaned);
-    // Runtime schema validation — a type assertion alone gives no protection
-    // against malformed or injected agent responses.
-    const parsed = ChancellorResponseSchema.parse(json);
+    const parsed = await runAgentWithValidation(
+      {
+        role: 'chancellor',
+        model: MODEL_IDS.CHANCELLOR,
+        systemPrompt: CHANCELLOR_SYSTEM_PROMPT,
+        userMessage,
+        maxTurns: opts.max_turns ?? MAX_TURNS.CHANCELLOR,
+        tools: AGENT_TOOLS.CHANCELLOR,
+        skipCaveman: opts.skipCaveman,
+      },
+      ChancellorResponseSchema,
+    );
     logger.debug({ steps: parsed.plan.length }, 'Chancellor plan parsed and validated');
     return parsed;
   } catch (err) {
-    logger.error({ raw: raw.slice(0, 500), err }, 'Failed to parse/validate Chancellor response');
+    logger.error({ err }, 'Chancellor failed after parse/validate retry');
     throw new CouncilError(
       'Chancellor returned an invalid or schema-violating response',
       'INVALID_JSON_RESPONSE',

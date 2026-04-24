@@ -37,7 +37,7 @@ Complexity routing uses a fast keyword + word count check with no extra LLM call
 | **Aide** | `claude-haiku-4-5` | Formatting, data transformation, utilities | `Read` | 3 |
 | **Supervisor** | `claude-haiku-4-5` | Output review, quality flags, intent alignment | None (pure reasoning) | 2 |
 
-The Supervisor is **advisory only** — it annotates and flags, never blocks. If the Supervisor errors, orchestration continues and a warning is logged.
+By default the Supervisor is an **active quality gate**: when it rejects an output (`approved: false`), the orchestrator re-invokes the agent with the Supervisor's flags appended as feedback, up to `COUNCIL_EVAL_RETRIES` times (default 2 → 3 total attempts). If the output is still flagged after the retry budget is exhausted, the result is surfaced anyway with the flags visible — nothing is silently dropped. Set `COUNCIL_EVAL_RETRIES=0` to revert to pure-advisory mode. If the Supervisor itself errors, orchestration continues without a verdict and a warning is logged.
 
 ---
 
@@ -166,6 +166,36 @@ Add `COUNCIL_CAVEMAN` to the env block:
 ```
 
 `full` is the recommended setting — it hits the target savings without sacrificing readability of intermediate agent outputs. The active mode is recorded in each session's `metrics.caveman_mode` field, visible via `get_council_state`.
+
+### Supervisor evaluation loop (optional)
+
+The Supervisor reviews every Executor and Aide output. When `approved: false`, the orchestrator re-invokes the agent with the Supervisor's flags and recommendation appended as feedback, giving the agent a chance to address the issues before the result surfaces. If the retry budget is exhausted, the flagged result surfaces anyway — no output is silently dropped.
+
+Configure with `COUNCIL_EVAL_RETRIES` (number of *additional* attempts after the initial one):
+
+| Value | Behaviour | Worst-case agent calls per step |
+|---|---|---|
+| `0` | Supervisor is advisory only — matches pre-0.5 behaviour | 1 |
+| `2` (default) | Up to 2 retries per flagged step — recommended | 3 |
+| `5` | Hard ceiling — clamped at 5 | 6 |
+
+Values outside `[0, 5]` are clamped; non-integer values fall back to the default. Each retry spends tokens for both the re-invoked agent *and* the Supervisor re-review, so high values trade quality for cost. The retry count for a session is recorded in `metrics.eval_retries`, visible via `get_council_state`.
+
+```json
+{
+  "mcpServers": {
+    "the-council": {
+      "command": "npx",
+      "args": ["-y", "council-mcp"],
+      "env": {
+        "PATH": "/path/to/claude/bin:/usr/local/bin:/usr/bin:/bin",
+        "COUNCIL_PERSIST": "sqlite",
+        "COUNCIL_EVAL_RETRIES": "2"
+      }
+    }
+  }
+}
+```
 
 ### Registries
 

@@ -4,7 +4,7 @@
 // Enable with: COUNCIL_PERSIST=sqlite
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
 import type {
   CouncilSession,
@@ -20,16 +20,22 @@ import type { SessionStore } from '../session-store.js';
 import { logger } from '../../logging/logger.js';
 
 const SESSION_TTL_DAYS = 7;
-const DB_DIR  = join(homedir(), '.council');
-const DB_PATH = join(DB_DIR, 'council.db');
+const DEFAULT_DB_DIR  = join(homedir(), '.council');
+const DEFAULT_DB_PATH = join(DEFAULT_DB_DIR, 'council.db');
 
 export class SQLiteStore implements SessionStore {
   private db: Database.Database;
   private expirationTimer?: NodeJS.Timeout;
+  private closed = false;
 
-  constructor() {
-    mkdirSync(DB_DIR, { recursive: true });
-    this.db = new Database(DB_PATH);
+  /**
+   * @param dbPath - Filesystem path for the SQLite database. Defaults to
+   *   `~/.council/council.db`. Overridable primarily for tests to isolate
+   *   writes from the user's real home directory.
+   */
+  constructor(dbPath: string = DEFAULT_DB_PATH) {
+    mkdirSync(dirname(dbPath), { recursive: true });
+    this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');  // safe for concurrent readers
     this.db.pragma('foreign_keys = ON');
     this.bootstrap();
@@ -37,7 +43,7 @@ export class SQLiteStore implements SessionStore {
     this.expirationTimer = setInterval(() => this.expireOld(), 24 * 60 * 60 * 1000);
     this.expirationTimer.unref();
     const count = (this.db.prepare('SELECT COUNT(*) as n FROM sessions').get() as { n: number }).n;
-    logger.info({ db: DB_PATH, sessions: count }, 'SQLiteStore initialised');
+    logger.info({ db: dbPath, sessions: count }, 'SQLiteStore initialised');
   }
 
   private bootstrap(): void {
@@ -92,7 +98,7 @@ export class SQLiteStore implements SessionStore {
       executor_progress: { completed_steps: [], results: [] },
       aide_results: [],
       supervisor_verdicts: [],
-      metrics: { total_agent_calls: 0, agents_invoked: [] },
+      metrics: { total_agent_calls: 0, agents_invoked: [], eval_retries: 0 },
     };
     this.write(session);
     return session;
@@ -159,6 +165,12 @@ export class SQLiteStore implements SessionStore {
     this.write(s);
   }
 
+  recordEvalRetry(requestId: string): void {
+    const s = this.get(requestId);
+    s.metrics.eval_retries = (s.metrics.eval_retries ?? 0) + 1;
+    this.write(s);
+  }
+
   complete(requestId: string, startedAt: number): void {
     const s = this.get(requestId);
     s.phase = 'complete';
@@ -192,11 +204,13 @@ export class SQLiteStore implements SessionStore {
   }
 
   close(): void {
+    if (this.closed) return;
     if (this.expirationTimer) {
       clearInterval(this.expirationTimer);
       this.expirationTimer = undefined;
     }
     this.db.close();
+    this.closed = true;
     logger.info('SQLiteStore closed');
   }
 }

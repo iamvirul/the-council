@@ -20,21 +20,33 @@ import { logger } from '../../logging/logger.js';
 
 const SESSION_TTL_DAYS = 7;
 const MAX_SESSIONS = 500;
-const SESSIONS_DIR = join(homedir(), '.council', 'sessions');
+const DEFAULT_SESSIONS_DIR = join(homedir(), '.council', 'sessions');
 
 export class FileStore implements SessionStore {
   private cache = new Map<string, CouncilSession>();
+  private sessionsDir: string;
+  private expirationTimer?: NodeJS.Timeout;
 
-  constructor() {
-    mkdirSync(SESSIONS_DIR, { recursive: true });
+  /**
+   * @param sessionsDir - Directory for session JSON files. Defaults to
+   *   `~/.council/sessions`. Overridable primarily for tests to isolate
+   *   writes from the user's real home directory.
+   */
+  constructor(sessionsDir: string = DEFAULT_SESSIONS_DIR) {
+    this.sessionsDir = sessionsDir;
+    mkdirSync(this.sessionsDir, { recursive: true });
     this.loadAll();
     this.expireOld();
-    setInterval(() => this.expireOld(), 6 * 60 * 60 * 1000).unref();
-    logger.info({ dir: SESSIONS_DIR, sessions: this.cache.size }, 'FileStore initialised');
+    this.expirationTimer = setInterval(() => this.expireOld(), 6 * 60 * 60 * 1000);
+    this.expirationTimer.unref();
+    logger.info(
+      { dir: this.sessionsDir, sessions: this.cache.size },
+      'FileStore initialised',
+    );
   }
 
   private sessionPath(requestId: string): string {
-    return join(SESSIONS_DIR, `${requestId}.json`);
+    return join(this.sessionsDir, `${requestId}.json`);
   }
 
   private persist(session: CouncilSession): void {
@@ -49,11 +61,11 @@ export class FileStore implements SessionStore {
   }
 
   private loadAll(): void {
-    if (!existsSync(SESSIONS_DIR)) return;
-    for (const file of readdirSync(SESSIONS_DIR)) {
+    if (!existsSync(this.sessionsDir)) return;
+    for (const file of readdirSync(this.sessionsDir)) {
       if (!file.endsWith('.json')) continue;
       try {
-        const raw = readFileSync(join(SESSIONS_DIR, file), 'utf8');
+        const raw = readFileSync(join(this.sessionsDir, file), 'utf8');
         const session = JSON.parse(raw) as CouncilSession;
         if (session.request_id) {
           this.cache.set(session.request_id, session);
@@ -98,7 +110,7 @@ export class FileStore implements SessionStore {
       executor_progress: { completed_steps: [], results: [] },
       aide_results: [],
       supervisor_verdicts: [],
-      metrics: { total_agent_calls: 0, agents_invoked: [] },
+      metrics: { total_agent_calls: 0, agents_invoked: [], eval_retries: 0 },
     };
     this.cache.set(session.request_id, session);
     this.persist(session);
@@ -166,6 +178,12 @@ export class FileStore implements SessionStore {
     this.persist(s);
   }
 
+  recordEvalRetry(requestId: string): void {
+    const s = this.get(requestId);
+    s.metrics.eval_retries = (s.metrics.eval_retries ?? 0) + 1;
+    this.persist(s);
+  }
+
   complete(requestId: string, startedAt: number): void {
     const s = this.get(requestId);
     s.phase = 'complete';
@@ -187,5 +205,12 @@ export class FileStore implements SessionStore {
   delete(requestId: string): void {
     this.cache.delete(requestId);
     try { unlinkSync(this.sessionPath(requestId)); } catch { /* already gone */ }
+  }
+
+  close(): void {
+    if (this.expirationTimer) {
+      clearInterval(this.expirationTimer);
+      this.expirationTimer = undefined;
+    }
   }
 }
