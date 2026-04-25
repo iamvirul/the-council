@@ -7,7 +7,7 @@
 
 A four-tier AI agent orchestration system built as a Claude Code MCP server.
 
-The Council is a TypeScript [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server with four Claude agents. When you give it a problem, it figures out the complexity and sends it to the right agents. A formatting task goes straight to the fast Aide (Haiku). A coding task goes to the Executor (Sonnet). A design or architecture problem first goes through the Chancellor (Opus) for a plan, then the Executor runs each step, delegating simple sub-tasks to the Aide. After each agent produces output, the Supervisor (Haiku) reviews it for quality and flags any issues before results surface to the caller.
+The Council is a TypeScript [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server with four Claude agents. When you give it a problem, it figures out the complexity and sends it to the right agents. A formatting task goes straight to the fast Aide (Haiku). A coding task goes to the Executor (Sonnet). A design or architecture problem first goes through the Chancellor (Opus) for a plan, then the Executor runs each step, delegating simple sub-tasks to the Aide. After each agent produces output, the Supervisor (Haiku) acts as an active quality gate — rejecting outputs that miss the mark and triggering a retry with its feedback attached, up to a configurable limit.
 
 Sub-agents run via the `claude` CLI — the same one Claude Code uses. **If you already have Claude Code installed, no separate API key or extra cost is needed.** The install script finds the `claude` binary and wires it up automatically. Alternatively, set `ANTHROPIC_API_KEY` in the MCP server env for CI or API-key-based setups.
 
@@ -250,7 +250,7 @@ Use `get_council_state` at any point to inspect a session. Each session tracks:
 - Executor step results
 - Aide task results
 - Supervisor verdicts (one per Executor step and Aide task)
-- Metrics: total agent calls, agents invoked, duration, caveman mode
+- Metrics: total agent calls, agents invoked, duration, caveman mode, eval retries
 
 ---
 
@@ -281,15 +281,18 @@ src/
     chancellor/     # Chancellor agent wrapper
     executor/       # Executor agent wrapper
     aide/           # Aide agent wrapper
-    supervisor/     # Supervisor agent wrapper (non-blocking quality review)
+    supervisor/     # Supervisor agent wrapper (active quality gate with eval loop)
   infra/            # External dependencies
-    agent-sdk/      # runner.ts - spawns claude CLI subprocess for each agent
-    config/         # caveman.ts - token compression mode config
+    agent-sdk/      # runner.ts (subprocess), parse.ts (JSON extractor), run-with-validation.ts (retry wrapper)
+    config/         # caveman.ts (token compression), eval.ts (Supervisor retry budget)
     state/          # Session store: memory / file / SQLite backends
     logging/        # pino structured logger (stderr only)
   mcp/
     server/         # MCP server setup, tool registration, lifecycle
     tools/          # Zod schemas for all tool inputs
+tests/
+  unit/             # Fast isolated tests: config, schemas, stores, agent invokers, orchestrator
+  integration/      # Real filesystem tests for FileStore and SQLiteStore
 ```
 
 ---
