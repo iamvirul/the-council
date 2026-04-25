@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-20
+
 ### Added
 - **Supervisor evaluation loop** — the Supervisor is now an active quality gate, not advisory only. When it rejects an agent output (`approved: false`), the orchestrator re-invokes the agent with the flags and recommendation appended as feedback, up to `COUNCIL_EVAL_RETRIES` times (default: 2 → 3 total attempts). If the retry budget is exhausted and the output is still flagged, the result is surfaced anyway with the flags visible — no silent passes.
 - `COUNCIL_EVAL_RETRIES` env var — clamped to `[0, 5]`. Set to `0` to restore pre-0.5 advisory-only behaviour. Non-integer values fall back to the default.
@@ -125,7 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/iamvirul/the-council/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/iamvirul/the-council/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/iamvirul/the-council/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/iamvirul/the-council/compare/v0.2.2...v0.2.3
