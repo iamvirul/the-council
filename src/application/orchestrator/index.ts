@@ -208,12 +208,23 @@ async function executeSteps(
     }
 
     // ── Aide delegations ──────────────────────────────────────────────────
+    // Each delegation is isolated: a failing Aide task is recorded as a step
+    // failure and skipped rather than aborting the rest of the pipeline.
     for (const task of execResult.delegated_tasks) {
       if (task.status === 'pending') {
-        await runAideWithEval(requestId, problem, task.description, task.task_id, {
-          problem: task.description,
-          context: `Part of step: ${step.description}`,
-        });
+        try {
+          await runAideWithEval(requestId, problem, task.description, task.task_id, {
+            problem: task.description,
+            context: `Part of step: ${step.description}`,
+          });
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          logger.error(
+            { request_id: requestId, step_id: step.id, task_id: task.task_id, err },
+            'Delegated Aide task failed — recording failure and continuing',
+          );
+          stateStore.recordStepFailure(requestId, task.task_id, errorMsg);
+        }
       }
     }
 
@@ -300,10 +311,13 @@ export async function runExecutorWithEval(
   let retriesExhausted = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    stateStore.recordAgentCall(requestId, 'executor');
-
+    // recordAgentCall is inside the withAgentRetry lambda so every actual
+    // subprocess invocation is counted — including infrastructure retries.
     const result = await withAgentRetry(
-      () => invokeExecutor({ ...opts, supervisor_feedback: feedback }),
+      () => {
+        stateStore.recordAgentCall(requestId, 'executor');
+        return invokeExecutor({ ...opts, supervisor_feedback: feedback });
+      },
       { role: 'executor', step: opts.problem.slice(0, 80) },
     );
     lastResult = result;
@@ -394,10 +408,13 @@ export async function runAideWithEval(
   let retriesExhausted = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    stateStore.recordAgentCall(requestId, 'aide');
-
+    // recordAgentCall is inside the withAgentRetry lambda so every actual
+    // subprocess invocation is counted — including infrastructure retries.
     const result = await withAgentRetry(
-      () => invokeAide(taskId, { ...opts, supervisor_feedback: feedback }),
+      () => {
+        stateStore.recordAgentCall(requestId, 'aide');
+        return invokeAide(taskId, { ...opts, supervisor_feedback: feedback });
+      },
       { role: 'aide', step: taskDescription.slice(0, 80) },
     );
     lastResult = result;

@@ -152,11 +152,13 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
 
     proc.on('close', (code) => {
       clearTimeout(timeoutId);
-      if (timedOut) return; // timeout already rejected
 
-      // Clean up temp files regardless of outcome
+      // Always clean up temp files — even on timeout, the process has now
+      // closed so the files are safe to remove.
       try { unlinkSync(systemPromptFile); } catch { /* ignore */ }
       try { rmdirSync(tmpDir); } catch { /* ignore */ }
+
+      if (timedOut) return; // timeout already rejected — don't double-reject
 
       const out = Buffer.concat(stdout).toString('utf8').trim();
       const err = Buffer.concat(stderr).toString('utf8').trim();

@@ -50,17 +50,22 @@ export async function withAgentRetry<T>(
   context: { role: string; step?: string },
   options: RetryOptions = DEFAULT_RETRY_OPTIONS,
 ): Promise<T> {
-  for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
+  // Merge caller options over defaults, then guard maxAttempts so callers
+  // passing 0 or negative don't silently skip all attempts.
+  const opts: RetryOptions = { ...DEFAULT_RETRY_OPTIONS, ...options };
+  opts.maxAttempts = Math.max(1, opts.maxAttempts);
+
+  for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err) {
-      const isLast = attempt === options.maxAttempts;
+      const isLast = attempt === opts.maxAttempts;
 
       if (!isRetryable(err) || isLast) throw err;
 
       const delayMs = Math.min(
-        options.baseDelayMs * Math.pow(2, attempt - 1),
-        options.maxDelayMs,
+        opts.baseDelayMs * Math.pow(2, attempt - 1),
+        opts.maxDelayMs,
       );
 
       logger.warn(
