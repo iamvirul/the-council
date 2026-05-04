@@ -28,7 +28,7 @@ export class MemoryStore implements SessionStore {
       created_at: new Date().toISOString(),
       problem,
       phase: 'planning',
-      executor_progress: { completed_steps: [], results: [] },
+      executor_progress: { completed_steps: [], results: [], step_failures: [] },
       aide_results: [],
       supervisor_verdicts: [],
       metrics: { total_agent_calls: 0, agents_invoked: [], eval_retries: 0 },
@@ -94,6 +94,11 @@ export class MemoryStore implements SessionStore {
   recordEvalRetry(requestId: string): void {
     const s = this.get(requestId);
     s.metrics.eval_retries = (s.metrics.eval_retries ?? 0) + 1;
+  }
+
+  recordStepFailure(requestId: string, stepId: string, error: string): void {
+    const s = this.get(requestId);
+    (s.executor_progress.step_failures ??= []).push({ step_id: stepId, error });
   }
 
   complete(requestId: string, startedAt: number): void {

@@ -11,9 +11,12 @@ import type {
   AideResponse,
   SupervisorVerdict,
   AgentInvokeOptions,
+  PlanStep,
 } from '../../domain/models/types.js';
 import { CAVEMAN_MODE } from '../../infra/config/caveman.js';
 import { EVAL_RETRIES } from '../../infra/config/eval.js';
+import { AGENT_TIMEOUT_MS } from '../../infra/config/timeout.js';
+import { withAgentRetry } from '../../infra/agent-sdk/retry.js';
 import { buildSupervisorFeedback } from './feedback.js';
 
 // ─── Complexity heuristic ─────────────────────────────────────────────────────
@@ -60,7 +63,13 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
   stateStore.recordCavemanMode(request_id, CAVEMAN_MODE);
 
   logger.info(
-    { request_id, complexity, cavemanMode: CAVEMAN_MODE, evalRetries: EVAL_RETRIES },
+    {
+      request_id,
+      complexity,
+      cavemanMode: CAVEMAN_MODE,
+      evalRetries: EVAL_RETRIES,
+      timeoutMs: AGENT_TIMEOUT_MS,
+    },
     'Orchestration started',
   );
 
@@ -88,7 +97,6 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
 
       const execResult = await runExecutorWithEval(request_id, problem, problem, { problem });
 
-      // Handle any Aide delegations from the final (approved or best-effort) Executor output.
       for (const task of execResult.delegated_tasks) {
         if (task.status === 'pending') {
           await runAideWithEval(request_id, problem, task.description, task.task_id, {
@@ -114,39 +122,25 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
     const chancellorPlan = await invokeChancellor({ problem });
     stateStore.setChancellorPlan(request_id, chancellorPlan);
 
-    logger.info(
-      { request_id, steps: chancellorPlan.plan.length },
-      'Chancellor plan received',
-    );
+    logger.info({ request_id, steps: chancellorPlan.plan.length }, 'Chancellor plan received');
 
     stateStore.setPhase(request_id, 'executing');
 
-    for (const step of chancellorPlan.plan) {
-      logger.info({ request_id, step_id: step.id }, 'Executing plan step');
+    // ── Conditional branching: single low-complexity step → Aide directly ────
+    // Avoids spinning up the Executor for work the Aide can handle alone.
+    if (chancellorPlan.plan.length === 1 && chancellorPlan.plan[0].complexity === 'low') {
+      const step = chancellorPlan.plan[0];
+      logger.info(
+        { request_id, step_id: step.id },
+        'Single low-complexity step — routing directly to Aide',
+      );
       stateStore.setCurrentStep(request_id, step.id);
-
-      const execResult = await runExecutorWithEval(request_id, problem, step.description, {
+      await runAideWithEval(request_id, problem, step.description, step.id, {
         problem: step.description,
-        context: JSON.stringify({ plan: chancellorPlan, current_step: step }),
+        context: `Chancellor analysis: ${chancellorPlan.analysis}`,
       });
-
-      // Handle Aide delegations from the final Executor output.
-      for (const task of execResult.delegated_tasks) {
-        if (task.status === 'pending') {
-          await runAideWithEval(request_id, problem, task.description, task.task_id, {
-            problem: task.description,
-            context: `Part of step: ${step.description}`,
-          });
-        }
-      }
-
-      if (execResult.status === 'blocked') {
-        logger.warn(
-          { request_id, step_id: step.id, blockers: execResult.blockers },
-          'Step blocked',
-        );
-        // Continue to next step — partial completion is better than halting
-      }
+    } else {
+      await executeSteps(request_id, problem, chancellorPlan.plan, chancellorPlan);
     }
 
     stateStore.complete(request_id, startedAt);
@@ -169,6 +163,110 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       undefined,
       err,
     );
+  }
+}
+
+// ─── Step execution engine ────────────────────────────────────────────────────
+// Runs a list of plan steps with:
+//   - Step-level failure isolation: infrastructure errors are caught per-step,
+//     recorded, and execution continues with remaining steps.
+//   - Dynamic re-routing: if a step is blocked and no escalation has happened
+//     yet, the Chancellor is re-invoked with the current state as context and
+//     execution continues with the revised plan. Bounded to one escalation per
+//     orchestration to prevent loops.
+//   - Aide delegations handled after each step.
+
+async function executeSteps(
+  requestId: string,
+  problem: string,
+  steps: PlanStep[],
+  chancellorPlan: Awaited<ReturnType<typeof invokeChancellor>>,
+  hasEscalated = false,
+): Promise<void> {
+  for (const step of steps) {
+    logger.info({ request_id: requestId, step_id: step.id }, 'Executing plan step');
+    stateStore.setCurrentStep(requestId, step.id);
+
+    let execResult: ExecutorResponse;
+
+    try {
+      execResult = await runExecutorWithEval(requestId, problem, step.description, {
+        problem: step.description,
+        context: JSON.stringify({ plan: chancellorPlan, current_step: step }),
+      });
+    } catch (err) {
+      // ── Step-level failure isolation ──────────────────────────────────────
+      // Infrastructure or timeout failures are recorded and skipped — partial
+      // completion is better than aborting the entire pipeline.
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { request_id: requestId, step_id: step.id, err },
+        'Step failed — recording failure and continuing with remaining steps',
+      );
+      stateStore.recordStepFailure(requestId, step.id, errorMsg);
+      continue;
+    }
+
+    // ── Aide delegations ──────────────────────────────────────────────────
+    for (const task of execResult.delegated_tasks) {
+      if (task.status === 'pending') {
+        await runAideWithEval(requestId, problem, task.description, task.task_id, {
+          problem: task.description,
+          context: `Part of step: ${step.description}`,
+        });
+      }
+    }
+
+    // ── Dynamic re-routing on blocked step ────────────────────────────────
+    // If blocked and we haven't already escalated, ask Chancellor to revise
+    // the remaining plan. Limited to one escalation per orchestration.
+    if (execResult.status === 'blocked') {
+      if (!hasEscalated) {
+        logger.info(
+          { request_id: requestId, step_id: step.id, blockers: execResult.blockers },
+          'Step blocked — escalating to Chancellor for plan revision',
+        );
+
+        try {
+          const completedSteps = stateStore.get(requestId).executor_progress.completed_steps;
+          stateStore.recordAgentCall(requestId, 'chancellor');
+
+          const revisedPlan = await invokeChancellor({
+            problem,
+            context: JSON.stringify({
+              original_analysis: chancellorPlan.analysis,
+              original_plan: chancellorPlan.plan.map(s => s.description),
+              completed_steps: completedSteps,
+              blocked_at: step.id,
+              blockers: execResult.blockers,
+              instruction: 'Revise the plan for the remaining incomplete work only. Do not re-plan completed steps.',
+            }),
+          });
+
+          stateStore.setChancellorPlan(requestId, revisedPlan);
+          logger.info(
+            { request_id: requestId, revised_steps: revisedPlan.plan.length },
+            'Chancellor revised plan received — continuing with revised steps',
+          );
+
+          // Skip steps already completed, then run the rest.
+          const completedSet = new Set(completedSteps);
+          const remainingSteps = revisedPlan.plan.filter(s => !completedSet.has(s.id));
+          await executeSteps(requestId, problem, remainingSteps, revisedPlan, true);
+          return; // revised plan took over — stop the original loop
+        } catch (err) {
+          logger.warn(
+            { request_id: requestId, step_id: step.id, err },
+            'Chancellor revision failed — continuing with original plan',
+          );
+        }
+      } else {
+        logger.warn(
+          { request_id: requestId, step_id: step.id, blockers: execResult.blockers },
+          'Step blocked (already escalated once) — continuing with remaining steps',
+        );
+      }
+    }
   }
 }
 
@@ -204,7 +302,10 @@ export async function runExecutorWithEval(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     stateStore.recordAgentCall(requestId, 'executor');
 
-    const result = await invokeExecutor({ ...opts, supervisor_feedback: feedback });
+    const result = await withAgentRetry(
+      () => invokeExecutor({ ...opts, supervisor_feedback: feedback }),
+      { role: 'executor', step: opts.problem.slice(0, 80) },
+    );
     lastResult = result;
 
     const verdict = await supervise(requestId, {
@@ -295,7 +396,10 @@ export async function runAideWithEval(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     stateStore.recordAgentCall(requestId, 'aide');
 
-    const result = await invokeAide(taskId, { ...opts, supervisor_feedback: feedback });
+    const result = await withAgentRetry(
+      () => invokeAide(taskId, { ...opts, supervisor_feedback: feedback }),
+      { role: 'aide', step: taskDescription.slice(0, 80) },
+    );
     lastResult = result;
 
     const verdict = await supervise(requestId, {
@@ -416,6 +520,15 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
     lines.push(`## Aide Outputs`);
     for (const r of session.aide_results) {
       lines.push(`**Task ${r.task_id}:** ${r.result}`);
+    }
+    lines.push('');
+  }
+
+  const failures = session.executor_progress.step_failures ?? [];
+  if (failures.length > 0) {
+    lines.push(`## Skipped Steps (Infrastructure Failures)`);
+    for (const f of failures) {
+      lines.push(`- **${f.step_id}**: ${f.error}`);
     }
     lines.push('');
   }

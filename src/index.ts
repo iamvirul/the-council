@@ -62,6 +62,18 @@ if (!['off', 'lite', 'full', 'ultra'].includes(cavemanMode)) {
   );
 }
 
+// Validate COUNCIL_AGENT_TIMEOUT_MS early — invalid values fall back to 120s default.
+const rawTimeout = process.env['COUNCIL_AGENT_TIMEOUT_MS'];
+if (rawTimeout !== undefined && rawTimeout.trim() !== '') {
+  const parsed = Number(rawTimeout);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0) {
+    process.stderr.write(
+      `Warning: invalid COUNCIL_AGENT_TIMEOUT_MS="${rawTimeout}" — falling back to 120000ms.\n` +
+      `Must be a positive integer in milliseconds (min: 10000, max: 600000).\n`,
+    );
+  }
+}
+
 import { startServer } from './mcp/server/index.js';
 
 startServer().catch((err: unknown) => {

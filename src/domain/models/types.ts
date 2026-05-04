@@ -80,6 +80,12 @@ export interface CouncilSession {
     completed_steps: string[];
     current_step?: string;
     results: ExecutorResponse[];
+    /**
+     * Steps that threw a hard error (infrastructure failure, timeout) during
+     * execution. Collected so the rest of the pipeline can continue and the
+     * summary can surface what was skipped.
+     */
+    step_failures: Array<{ step_id: string; error: string }>;
   };
   aide_results: AideResponse[];
   supervisor_verdicts: SupervisorVerdict[];
@@ -107,6 +113,7 @@ export interface CouncilSession {
 
 export type CouncilErrorCode =
   | 'AGENT_SDK_ERROR'
+  | 'AGENT_TIMEOUT'
   | 'INVALID_JSON_RESPONSE'
   | 'SESSION_NOT_FOUND'
   | 'ORCHESTRATION_FAILED'

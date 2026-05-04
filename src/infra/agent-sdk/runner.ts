@@ -10,6 +10,7 @@ import type { AgentRole } from '../../domain/models/types.js';
 import { CouncilError } from '../../domain/models/types.js';
 import { logger } from '../logging/logger.js';
 import { applyCaveman, CAVEMAN_MODE } from '../config/caveman.js';
+import { AGENT_TIMEOUT_MS } from '../config/timeout.js';
 
 export interface RunAgentParams {
   role: AgentRole;
@@ -123,10 +124,24 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
       env: childEnv,
     });
 
+    // Per-agent hard timeout — SIGTERM + 2s grace then SIGKILL.
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      proc.kill('SIGTERM');
+      setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* already gone */ } }, 2_000);
+      reject(new CouncilError(
+        `Agent ${role} timed out after ${AGENT_TIMEOUT_MS}ms`,
+        'AGENT_TIMEOUT',
+        role,
+      ));
+    }, AGENT_TIMEOUT_MS);
+
     proc.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
     proc.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
 
     proc.on('error', (err) => {
+      clearTimeout(timeoutId);
       reject(new CouncilError(
         `Failed to spawn claude CLI for ${role}: ${err.message}`,
         'AGENT_SDK_ERROR',
@@ -136,6 +151,9 @@ export async function runAgent(params: RunAgentParams): Promise<string> {
     });
 
     proc.on('close', (code) => {
+      clearTimeout(timeoutId);
+      if (timedOut) return; // timeout already rejected
+
       // Clean up temp files regardless of outcome
       try { unlinkSync(systemPromptFile); } catch { /* ignore */ }
       try { rmdirSync(tmpDir); } catch { /* ignore */ }
