@@ -26,43 +26,90 @@ stateStore.recordAgentCall = (requestId, role) => {
 
 console.log('\n=== TEST: Conditional branching — single low step → Aide ===');
 console.log('Strategy: mock invokeChancellor to return a 1-step low plan');
-console.log('Expecting: aide invoked, executor NOT invoked\n');
+console.log('Expecting: chancellor + aide invoked, executor NOT invoked\n');
 
-// Dynamically import orchestrator AFTER patching stateStore
-const { runAideWithEval, runExecutorWithEval } = await import('../../dist/application/orchestrator/index.js');
+// Import and mock invokeChancellor to return a controlled plan
+const chancellorModule = await import('../../dist/application/chancellor/agent.js');
+const originalInvokeChancellor = chancellorModule.invokeChancellor;
 
-// We can't easily intercept module-level imports in ESM, so instead we'll
-// test the branching logic by calling the orchestrator internals directly.
-//
-// What the branching does in orchestrate():
-//   if (plan.length === 1 && plan[0].complexity === 'low') → runAideWithEval
-//   else → executeSteps (which calls runExecutorWithEval)
-//
-// We verify the condition itself:
+// Mock Chancellor to return a single low-complexity step plan
+chancellorModule.invokeChancellor = async (opts) => {
+  console.log('Mock Chancellor invoked');
+  return {
+    analysis: 'Simple formatting task requiring a single low-complexity step',
+    plan: [
+      {
+        id: 'step-1',
+        description: 'Format the JSON blob according to specification',
+        complexity: 'low',
+        assignee: 'aide',
+        dependencies: [],
+        success_criteria: 'JSON is properly formatted',
+      },
+    ],
+  };
+};
 
-const singleLowPlan = [{ id: 'step-1', description: 'format a JSON blob', complexity: 'low', assignee: 'aide', dependencies: [], success_criteria: 'formatted' }];
-const multiStepPlan = [{ id: 'step-1', description: 'first', complexity: 'low' }, { id: 'step-2', description: 'second', complexity: 'low' }];
-const singleHighPlan = [{ id: 'step-1', description: 'architect a system', complexity: 'high', assignee: 'executor', dependencies: [], success_criteria: 'done' }];
+// Mock Aide to prevent actual agent invocation
+const aideModule = await import('../../dist/application/aide/agent.js');
+const originalInvokeAide = aideModule.invokeAide;
+aideModule.invokeAide = async (taskId, opts) => {
+  console.log('Mock Aide invoked');
+  return {
+    task_id: taskId,
+    result: 'Task completed successfully',
+  };
+};
 
-function checkBranching(plan) {
-  return plan.length === 1 && plan[0].complexity === 'low';
-}
+// Mock Supervisor to prevent actual agent invocation
+const supervisorModule = await import('../../dist/application/supervisor/agent.js');
+const originalInvokeSupervisor = supervisorModule.invokeSupervisor;
+supervisorModule.invokeSupervisor = async (params) => {
+  console.log('Mock Supervisor invoked');
+  return {
+    subject: params.subject_id,
+    subject_type: params.subject_type,
+    approved: true,
+    flags: [],
+    recommendation: 'Approved',
+  };
+};
 
-console.log('Branching logic checks:');
-console.log(`  Single low step  → Aide? ${checkBranching(singleLowPlan)}  (expected: true)`);
-console.log(`  Multi step       → Aide? ${checkBranching(multiStepPlan)}  (expected: false)`);
-console.log(`  Single high step → Aide? ${checkBranching(singleHighPlan)}  (expected: false)`);
+// Dynamically import orchestrator AFTER patching
+const { orchestrate } = await import('../../dist/application/orchestrator/index.js');
 
-const allCorrect =
-  checkBranching(singleLowPlan) === true &&
-  checkBranching(multiStepPlan) === false &&
-  checkBranching(singleHighPlan) === false;
+// Call orchestrate with a problem that triggers the complex path
+// (contains "plan" keyword to ensure complexity = 'complex')
+try {
+  console.log('Calling orchestrate with complex problem...');
+  const result = await orchestrate('plan a simple JSON formatting task');
 
-if (allCorrect) {
-  console.log('\nPASS ✅  — branching condition is correct');
-  console.log('\nNote: Full e2e test requires a real Chancellor call returning complexity:low.');
-  console.log('Use prompt: "list the items in this array: [1,2,3]" for a high chance of low-complexity plan.');
-} else {
-  console.log('\nFAIL ❌  — branching condition logic wrong');
+  console.log(`\nOrchestration completed: ${result.request_id}`);
+  console.log(`Complexity assessed: ${result.complexity}`);
+  console.log(`Agents invoked: ${agentCallLog.join(', ')}`);
+
+  // Verify the branching worked correctly
+  const hasChancellor = agentCallLog.includes('chancellor');
+  const hasAide = agentCallLog.includes('aide');
+  const hasExecutor = agentCallLog.includes('executor');
+
+  console.log('\nAssertion checks:');
+  console.log(`  Chancellor invoked? ${hasChancellor} (expected: true)`);
+  console.log(`  Aide invoked? ${hasAide} (expected: true)`);
+  console.log(`  Executor invoked? ${hasExecutor} (expected: false)`);
+
+  if (hasChancellor && hasAide && !hasExecutor) {
+    console.log('\nPASS ✅  — single low-complexity step correctly routed to Aide, bypassing Executor');
+  } else {
+    console.log('\nFAIL ❌  — incorrect routing detected');
+    process.exit(1);
+  }
+} catch (err) {
+  console.error('\nFAIL ❌  — orchestration threw error:', err.message);
   process.exit(1);
+} finally {
+  // Restore original functions
+  chancellorModule.invokeChancellor = originalInvokeChancellor;
+  aideModule.invokeAide = originalInvokeAide;
+  supervisorModule.invokeSupervisor = originalInvokeSupervisor;
 }
