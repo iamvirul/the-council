@@ -66,7 +66,7 @@ describe('MemoryStore — lifecycle', () => {
     const s = store.create('problem X');
     expect(s.problem).toBe('problem X');
     expect(s.phase).toBe('planning');
-    expect(s.executor_progress).toEqual({ completed_steps: [], results: [] });
+    expect(s.executor_progress).toEqual({ completed_steps: [], results: [], step_failures: [] });
     expect(s.aide_results).toEqual([]);
     expect(s.supervisor_verdicts).toEqual([]);
     expect(s.metrics).toEqual({

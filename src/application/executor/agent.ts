@@ -34,6 +34,12 @@ export async function invokeExecutor(opts: AgentInvokeOptions): Promise<Executor
     logger.debug({ step_id: parsed.step_id, status: parsed.status }, 'Executor response parsed and validated');
     return parsed;
   } catch (err) {
+    // Infrastructure errors (spawn failures, timeouts) must propagate unchanged
+    // so withAgentRetry can retry them. Only parse/schema failures become
+    // INVALID_JSON_RESPONSE — retrying those would not help.
+    if (err instanceof CouncilError && (err.code === 'AGENT_SDK_ERROR' || err.code === 'AGENT_TIMEOUT')) {
+      throw err;
+    }
     logger.error({ err }, 'Executor failed after parse/validate retry');
     throw new CouncilError(
       'Executor returned an invalid or schema-violating response',

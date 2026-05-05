@@ -43,6 +43,12 @@ export async function invokeSupervisor(ctx: SupervisorContext): Promise<Supervis
     );
     return parsed;
   } catch (err) {
+    // Infrastructure errors (spawn failures, timeouts) must propagate unchanged
+    // so the supervisor's own error handler (in orchestrate) can treat them
+    // as "no verdict" rather than a hard failure.
+    if (err instanceof CouncilError && (err.code === 'AGENT_SDK_ERROR' || err.code === 'AGENT_TIMEOUT')) {
+      throw err;
+    }
     logger.error({ err }, 'Supervisor failed after parse/validate retry');
     throw new CouncilError(
       'Supervisor returned an invalid or schema-violating response',

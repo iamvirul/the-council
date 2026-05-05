@@ -36,6 +36,12 @@ export async function invokeChancellor(opts: AgentInvokeOptions): Promise<Chance
     logger.debug({ steps: parsed.plan.length }, 'Chancellor plan parsed and validated');
     return parsed;
   } catch (err) {
+    // Infrastructure errors (spawn failures, timeouts) must propagate unchanged
+    // so withAgentRetry can retry them. Only parse/schema failures become
+    // INVALID_JSON_RESPONSE — retrying those would not help.
+    if (err instanceof CouncilError && (err.code === 'AGENT_SDK_ERROR' || err.code === 'AGENT_TIMEOUT')) {
+      throw err;
+    }
     logger.error({ err }, 'Chancellor failed after parse/validate retry');
     throw new CouncilError(
       'Chancellor returned an invalid or schema-violating response',

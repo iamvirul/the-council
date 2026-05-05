@@ -62,6 +62,28 @@ if (!['off', 'lite', 'full', 'ultra'].includes(cavemanMode)) {
   );
 }
 
+// Validate COUNCIL_AGENT_TIMEOUT_MS early.
+// Mirrors the clamping logic in src/infra/config/timeout.ts so the user sees
+// a stderr warning that accurately describes what will happen at runtime.
+const rawTimeout = process.env['COUNCIL_AGENT_TIMEOUT_MS'];
+if (rawTimeout !== undefined && rawTimeout.trim() !== '') {
+  const parsed = Number(rawTimeout);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0) {
+    process.stderr.write(
+      `Warning: invalid COUNCIL_AGENT_TIMEOUT_MS="${rawTimeout}" — falling back to 120000ms (default).\n` +
+      `Must be a positive integer in milliseconds.\n`,
+    );
+  } else if (parsed < 10_000) {
+    process.stderr.write(
+      `Warning: COUNCIL_AGENT_TIMEOUT_MS="${rawTimeout}" is below the 10000ms minimum — will be clamped to 10000ms.\n`,
+    );
+  } else if (parsed > 600_000) {
+    process.stderr.write(
+      `Warning: COUNCIL_AGENT_TIMEOUT_MS="${rawTimeout}" exceeds the 600000ms ceiling — will be clamped to 600000ms.\n`,
+    );
+  }
+}
+
 import { startServer } from './mcp/server/index.js';
 
 startServer().catch((err: unknown) => {
