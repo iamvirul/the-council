@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-05
+
+### Added
+- **Infrastructure retry with exponential backoff** (`withAgentRetry`) — every agent subprocess call is now wrapped in a 3-attempt retry layer with 1 s → 2 s → 4 s backoff (capped at 8 s). Only transient infrastructure errors (`AGENT_SDK_ERROR`, `AGENT_TIMEOUT`) trigger retries; parse/schema failures propagate immediately. Retry context (role, step) is logged at `warn` level on each attempt.
+- **Per-agent subprocess timeout** (`COUNCIL_AGENT_TIMEOUT_MS`) — hard deadline for each claude CLI call. On expiry the process receives SIGTERM (2 s grace) then SIGKILL, and an `AGENT_TIMEOUT` error is thrown. Feeds into `withAgentRetry` so the full 3-attempt budget still applies. Default: 120 s. Range: `[10 000, 600 000]` ms. Values outside the range are clamped with a startup warning.
+- **Conditional branching: single low-complexity step → Aide** — when the Chancellor produces a 1-step plan with `complexity: "low"`, the orchestrator routes directly to the Aide, skipping Executor entirely. Saves an Executor invocation for trivial tasks.
+- **Dynamic re-routing on blocked steps** — when an Executor step returns `status: "blocked"`, the Chancellor is re-invoked with the completed steps, blocked step ID, and blockers as context to produce a revised plan. Bounded to one escalation per orchestration to prevent loops. If the Chancellor revision itself fails, the original plan continues.
+- **Step-level failure isolation** — infrastructure errors within `executeSteps` are caught per-step, recorded in `executor_progress.step_failures`, and execution continues with remaining steps. Partial completion is preferred over aborting the pipeline.
+- `step_failures` field on `executor_progress` — array of `{ step_id, error }` objects. Visible via `get_council_state` and rendered in the result summary under `## Skipped Steps (Infrastructure Failures)`.
+- `AGENT_TIMEOUT` added to `CouncilErrorCode` — first-class error code distinct from `AGENT_SDK_ERROR`.
+- Startup validation for `COUNCIL_AGENT_TIMEOUT_MS` in `src/index.ts` — non-integer, below-minimum, and above-maximum values each produce a tailored warning describing exactly what will happen.
+- Local integration test suite in `tests/local/`:
+  - `test-timeout.mjs` — verifies `AGENT_TIMEOUT` surfaces after retry budget exhausted (uses a 60 s sleep stub so the timeout fires deterministically)
+  - `test-branching.mjs` — verifies the single-low-step → Aide routing condition
+  - `test-spawn-failure.mjs` — verifies `AGENT_SDK_ERROR` propagates correctly and failed steps accumulate in `step_failures`
+
+### Fixed
+- **Infrastructure errors swallowed by agent invokers** — all four invokers (`invokeChancellor`, `invokeExecutor`, `invokeAide`, `invokeSupervisor`) were catching `AGENT_SDK_ERROR` and `AGENT_TIMEOUT` in their `try/catch` and re-wrapping them as `INVALID_JSON_RESPONSE`. Since `INVALID_JSON_RESPONSE` is not retryable, `withAgentRetry` never fired for spawn failures or timeouts. Each invoker now re-throws infrastructure `CouncilError` codes unchanged; only parse/schema failures become `INVALID_JSON_RESPONSE`.
+- **Temp file cleanup on timeout** — system prompt temp files are now deleted in `proc.on('close')` (which always fires, even after SIGTERM/SIGKILL) rather than before the `timedOut` early-return. Previously a timed-out agent would leak its temp file.
+- **`recordAgentCall` undercounting** — the call was made once before `withAgentRetry`, so only the first invocation was counted regardless of retries. Moved inside the retry lambda so every subprocess invocation is counted.
+- **`COUNCIL_AGENT_TIMEOUT_MS` startup warning inaccuracy** — previously a single branch emitted the same message for non-integer, below-min, and above-max cases. Now three distinct branches each describe the exact outcome.
+
+### Security
+- Removed unused `@anthropic-ai/claude-agent-sdk` dependency — eliminates `GHSA-p7fg-763f-g4gf` (moderate severity). No source file imported it; it was an artifact from an early prototype. `npm audit` now reports zero vulnerabilities.
+
+### Changed
+- `withAgentRetry` is the canonical infrastructure retry layer, replacing ad-hoc per-invocation retry logic.
+- `runAgentWithValidation` one-shot retry scope is clarified — handles parse/validate flakiness only; infrastructure retries are `withAgentRetry`'s responsibility.
+
 ## [0.5.0] - 2026-04-20
 
 ### Added
