@@ -13,6 +13,7 @@ import type {
   SessionPhase,
   ChancellorResponse,
   SupervisorVerdict,
+  ChancellorCoherenceCheck,
 } from '../../../domain/models/types.js';
 import { CouncilError } from '../../../domain/models/types.js';
 import type { SessionStore } from '../session-store.js';
@@ -187,6 +188,12 @@ export class FileStore implements SessionStore {
   recordStepFailure(requestId: string, stepId: string, error: string): void {
     const s = this.get(requestId);
     (s.executor_progress.step_failures ??= []).push({ step_id: stepId, error });
+    this.persist(s);
+  }
+
+  recordCoherenceCheck(requestId: string, check: ChancellorCoherenceCheck): void {
+    const s = this.get(requestId);
+    s.coherence_check = check;
     this.persist(s);
   }
 

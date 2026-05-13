@@ -1,4 +1,4 @@
-import { invokeChancellor } from '../chancellor/agent.js';
+import { invokeChancellor, invokeChancellorCoherence } from '../chancellor/agent.js';
 import { invokeExecutor } from '../executor/agent.js';
 import { invokeAide } from '../aide/agent.js';
 import { invokeSupervisor } from '../supervisor/agent.js';
@@ -141,6 +141,12 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       });
     } else {
       await executeSteps(request_id, problem, chancellorPlan.plan, chancellorPlan);
+
+      // ── Loop 2: Executor → Chancellor coherence check ─────────────────────
+      // After all steps finish, ask the Chancellor to assess whether the
+      // execution matched the plan. Non-blocking — a failure here must not
+      // abort the pipeline or change the final phase.
+      await runCoherenceCheck(request_id, problem, chancellorPlan);
     }
 
     stateStore.complete(request_id, startedAt);
@@ -182,6 +188,12 @@ async function executeSteps(
   steps: PlanStep[],
   chancellorPlan: Awaited<ReturnType<typeof invokeChancellor>>,
   hasEscalated = false,
+  // ── Loop 3: Aide → Executor ───────────────────────────────────────────────
+  // Aide results from the PREVIOUS step are forwarded as context so each
+  // Executor step knows what the Aide actually delivered, rather than
+  // assuming success. Accumulated across iterations and passed into
+  // invokeExecutor via opts.aide_summary.
+  previousAideSummary?: string,
 ): Promise<void> {
   for (const step of steps) {
     logger.info({ request_id: requestId, step_id: step.id }, 'Executing plan step');
@@ -193,6 +205,7 @@ async function executeSteps(
       execResult = await runExecutorWithEval(requestId, problem, step.description, {
         problem: step.description,
         context: JSON.stringify({ plan: chancellorPlan, current_step: step }),
+        aide_summary: previousAideSummary,
       });
     } catch (err) {
       // ── Step-level failure isolation ──────────────────────────────────────
@@ -210,13 +223,16 @@ async function executeSteps(
     // ── Aide delegations ──────────────────────────────────────────────────
     // Each delegation is isolated: a failing Aide task is recorded as a step
     // failure and skipped rather than aborting the rest of the pipeline.
+    // Results are collected so they can be forwarded to the next Executor step.
+    const aideResultsThisStep: AideResponse[] = [];
     for (const task of execResult.delegated_tasks) {
       if (task.status === 'pending') {
         try {
-          await runAideWithEval(requestId, problem, task.description, task.task_id, {
+          const aideResult = await runAideWithEval(requestId, problem, task.description, task.task_id, {
             problem: task.description,
             context: `Part of step: ${step.description}`,
           });
+          aideResultsThisStep.push(aideResult);
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err);
           logger.error(
@@ -226,6 +242,19 @@ async function executeSteps(
           stateStore.recordStepFailure(requestId, task.task_id, errorMsg);
         }
       }
+    }
+
+    // Build the Aide summary that the NEXT step's Executor will receive.
+    // Reset on every step — older summaries must not leak into steps that
+    // had no Aide delegation.
+    if (aideResultsThisStep.length > 0) {
+      previousAideSummary = buildAideSummary(step.id, aideResultsThisStep);
+      logger.debug(
+        { request_id: requestId, step_id: step.id, aide_tasks: aideResultsThisStep.length },
+        'Aide results will be forwarded to next Executor step',
+      );
+    } else {
+      previousAideSummary = undefined;
     }
 
     // ── Dynamic re-routing on blocked step ────────────────────────────────
@@ -263,7 +292,7 @@ async function executeSteps(
           // Skip steps already completed, then run the rest.
           const completedSet = new Set(completedSteps);
           const remainingSteps = revisedPlan.plan.filter(s => !completedSet.has(s.id));
-          await executeSteps(requestId, problem, remainingSteps, revisedPlan, true);
+          await executeSteps(requestId, problem, remainingSteps, revisedPlan, true, previousAideSummary);
           return; // revised plan took over — stop the original loop
         } catch (err) {
           logger.warn(
@@ -279,6 +308,74 @@ async function executeSteps(
       }
     }
   }
+}
+
+// ─── Loop 2: Coherence check ──────────────────────────────────────────────────
+// Non-blocking post-execution review. A failure here never aborts the pipeline.
+
+async function runCoherenceCheck(
+  requestId: string,
+  problem: string,
+  chancellorPlan: Awaited<ReturnType<typeof invokeChancellor>>,
+): Promise<void> {
+  const session = stateStore.get(requestId);
+  const executionResults = session.executor_progress.results;
+  const aideResults = session.aide_results;
+  const stepFailures = session.executor_progress.step_failures ?? [];
+
+  // Skip only when there is truly nothing to review — failed/skipped steps
+  // are still meaningful signal for the Chancellor's coherence assessment.
+  if (executionResults.length === 0 && aideResults.length === 0 && stepFailures.length === 0) return;
+
+  const planSummary = chancellorPlan.plan
+    .map(s => `- [${s.id}] ${s.description} (${s.complexity})`)
+    .join('\n');
+
+  const executionSummary = [
+    executionResults.length > 0
+      ? `Executor results:\n${executionResults.map(r => `- [${r.step_id}] status=${r.status}: ${r.result.slice(0, 300)}`).join('\n')}`
+      : 'No Executor results.',
+    aideResults.length > 0
+      ? `Aide results:\n${aideResults.map(r => `- [${r.task_id}] status=${r.status}: ${r.result.slice(0, 200)}`).join('\n')}`
+      : '',
+    stepFailures.length > 0
+      ? `Failed/skipped steps:\n${stepFailures.map(f => `- [${f.step_id}]: ${f.error.slice(0, 150)}`).join('\n')}`
+      : '',
+  ].filter(Boolean).join('\n\n');
+
+  try {
+    stateStore.recordAgentCall(requestId, 'chancellor');
+    const coherenceCheck = await invokeChancellorCoherence({
+      problem,
+      plan: planSummary,
+      execution_summary: executionSummary,
+    });
+    stateStore.recordCoherenceCheck(requestId, coherenceCheck);
+    logger.info(
+      { request_id: requestId, coherent: coherenceCheck.coherent, gaps: coherenceCheck.gaps.length },
+      'Coherence check completed',
+    );
+  } catch (err) {
+    logger.warn(
+      { request_id: requestId, err },
+      'Coherence check failed — continuing without it',
+    );
+  }
+}
+
+// ─── Loop 3: Aide summary builder ────────────────────────────────────────────
+// Formats Aide results into a compact prompt fragment for the next Executor step.
+
+function buildAideSummary(stepId: string, aideResults: AideResponse[]): string {
+  const lines = [
+    `--- AIDE RESULTS FROM PREVIOUS STEP (${stepId}) ---`,
+    `The following tasks were completed by the Aide. Incorporate these results into your work.`,
+  ];
+  for (const r of aideResults) {
+    lines.push(`Task ${r.task_id} (${r.status}): ${r.result.slice(0, 500)}`);
+  }
+  lines.push(`--- END AIDE RESULTS ---`);
+  return lines.join('\n');
 }
 
 // ─── Evaluation loop ──────────────────────────────────────────────────────────
@@ -556,6 +653,24 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
     for (const v of flagged) {
       lines.push(`- **${v.subject}** (${v.subject_type}): ${v.recommendation}`);
       for (const f of v.flags) lines.push(`  - ${f}`);
+    }
+    lines.push('');
+  }
+
+  if (session.coherence_check) {
+    const cc = session.coherence_check;
+    const verdict = cc.coherent ? '✓ Coherent' : '⚠ Gaps detected';
+    lines.push(`## Chancellor Coherence Review (${verdict})`);
+    lines.push(cc.assessment);
+    if (cc.gaps.length > 0) {
+      lines.push('');
+      lines.push('**Gaps:**');
+      for (const g of cc.gaps) lines.push(`- ${g}`);
+    }
+    if (cc.recommendations.length > 0) {
+      lines.push('');
+      lines.push('**Recommendations:**');
+      for (const r of cc.recommendations) lines.push(`- ${r}`);
     }
     lines.push('');
   }

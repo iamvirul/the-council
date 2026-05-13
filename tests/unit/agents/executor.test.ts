@@ -97,6 +97,31 @@ describe('invokeExecutor — user message composition', () => {
     expect(msg.indexOf('plan JSON')).toBeLessThan(msg.indexOf('SUPERVISOR FEEDBACK'));
   });
 
+  it('includes aide_summary between context and supervisor_feedback', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify(VALID_RESPONSE));
+    await invokeExecutor({
+      problem: 'do X',
+      context: 'plan JSON',
+      aide_summary: '--- AIDE RESULTS FROM PREVIOUS STEP ---\nTask t-1: done',
+      supervisor_feedback: '--- SUPERVISOR FEEDBACK ---\nflag: foo\n--- END ---',
+    });
+    const msg = mockedRun.mock.calls[0]?.[0].userMessage as string;
+    const taskIdx = msg.indexOf('Task: do X');
+    const ctxIdx = msg.indexOf('plan JSON');
+    const aideIdx = msg.indexOf('AIDE RESULTS');
+    const supIdx = msg.indexOf('SUPERVISOR FEEDBACK');
+    expect(taskIdx).toBeLessThan(ctxIdx);
+    expect(ctxIdx).toBeLessThan(aideIdx);
+    expect(aideIdx).toBeLessThan(supIdx);
+  });
+
+  it('omits aide_summary block when not provided', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify(VALID_RESPONSE));
+    await invokeExecutor({ problem: 'do X' });
+    const msg = mockedRun.mock.calls[0]?.[0].userMessage as string;
+    expect(msg).not.toContain('AIDE RESULTS');
+  });
+
   it('propagates max_turns when provided', async () => {
     mockedRun.mockResolvedValueOnce(JSON.stringify(VALID_RESPONSE));
     await invokeExecutor({ problem: 'do X', max_turns: 4 });

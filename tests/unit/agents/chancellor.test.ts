@@ -6,7 +6,7 @@ vi.mock('../../../src/infra/agent-sdk/runner.js', () => ({
 }));
 
 import { runAgent } from '../../../src/infra/agent-sdk/runner.js';
-import { invokeChancellor } from '../../../src/application/chancellor/agent.js';
+import { invokeChancellor, invokeChancellorCoherence } from '../../../src/application/chancellor/agent.js';
 
 const mockedRun = runAgent as unknown as Mock;
 
@@ -82,6 +82,53 @@ describe('invokeChancellor — parsing', () => {
     await expect(invokeChancellor({ problem: 'design Y' })).rejects.toMatchObject({
       code: 'INVALID_JSON_RESPONSE',
     });
+  });
+});
+
+describe('invokeChancellorCoherence — parsing', () => {
+  const VALID_COHERENCE = {
+    coherent: true,
+    assessment: 'Execution matched the plan.',
+    gaps: [],
+    recommendations: [],
+  };
+
+  it('parses a valid coherence response', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify(VALID_COHERENCE));
+    const r = await invokeChancellorCoherence({ problem: 'p', plan: 'plan text', execution_summary: 'exec' });
+    expect(r.coherent).toBe(true);
+    expect(r.assessment).toBe('Execution matched the plan.');
+  });
+
+  it('parses a non-coherent response with gaps', async () => {
+    const gapped = { ...VALID_COHERENCE, coherent: false, gaps: ['Step 2 not completed'] };
+    mockedRun.mockResolvedValueOnce(JSON.stringify(gapped));
+    const r = await invokeChancellorCoherence({ problem: 'p', plan: 'plan text', execution_summary: 'exec' });
+    expect(r.coherent).toBe(false);
+    expect(r.gaps).toContain('Step 2 not completed');
+  });
+
+  it('throws INVALID_JSON_RESPONSE on malformed JSON', async () => {
+    mockedRun.mockResolvedValueOnce('not json');
+    await expect(
+      invokeChancellorCoherence({ problem: 'p', plan: 'plan text', execution_summary: 'exec' }),
+    ).rejects.toMatchObject({ code: 'INVALID_JSON_RESPONSE', agent: 'chancellor' });
+  });
+
+  it('throws INVALID_JSON_RESPONSE when coherent field is missing', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify({ assessment: 'ok', gaps: [], recommendations: [] }));
+    await expect(
+      invokeChancellorCoherence({ problem: 'p', plan: 'plan text', execution_summary: 'exec' }),
+    ).rejects.toMatchObject({ code: 'INVALID_JSON_RESPONSE' });
+  });
+
+  it('includes problem, plan, and execution_summary in user message', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify(VALID_COHERENCE));
+    await invokeChancellorCoherence({ problem: 'my problem', plan: 'step A', execution_summary: 'did step A' });
+    const msg = mockedRun.mock.calls[0]?.[0].userMessage as string;
+    expect(msg).toContain('my problem');
+    expect(msg).toContain('step A');
+    expect(msg).toContain('did step A');
   });
 });
 

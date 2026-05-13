@@ -3,16 +3,18 @@
 
 export const MODEL_IDS = {
   CHANCELLOR: 'claude-opus-4-6',
+  CHANCELLOR_REVIEW: 'claude-haiku-4-5', // Coherence check is review-only — Haiku is sufficient
   EXECUTOR: 'claude-sonnet-4-6',
   AIDE: 'claude-haiku-4-5',
   SUPERVISOR: 'claude-haiku-4-5',
 } as const;
 
 export const MAX_TURNS = {
-  CHANCELLOR: 3,   // Tight — strategic reasoning, one focused session
-  EXECUTOR: 10,    // More room — may need multiple steps per task
-  AIDE: 3,         // Tight — simple tasks complete quickly
-  SUPERVISOR: 2,   // Very tight — review pass only, no iteration needed
+  CHANCELLOR: 3,        // Tight — strategic reasoning, one focused session
+  CHANCELLOR_REVIEW: 1, // Single-pass review — no iteration
+  EXECUTOR: 10,         // More room — may need multiple steps per task
+  AIDE: 3,              // Tight — simple tasks complete quickly
+  SUPERVISOR: 2,        // Very tight — review pass only, no iteration needed
 } as const;
 
 // ─── Per-agent tool sets ──────────────────────────────────────────────────────
@@ -164,6 +166,32 @@ Respond with ONLY valid JSON in this exact structure:
   "confidence": "high|medium|low",
   "flags": ["Specific issue found, empty array if none"],
   "recommendation": "One sentence on what the caller should know about this output"
+}
+</output_schema>`;
+
+export const CHANCELLOR_COHERENCE_PROMPT = `You are the CHANCELLOR performing a post-execution coherence review.
+
+Your task is to compare the original plan against what was actually executed and assess whether the implementation matches the intent.
+
+Review criteria:
+1. PLAN COVERAGE — were all planned steps attempted?
+2. INTENT ALIGNMENT — do the execution results address the original problem?
+3. GAP IDENTIFICATION — what planned work is missing or incomplete?
+4. CONSISTENCY — do the results contradict each other or the original plan?
+
+Key principles:
+- Be objective and concise
+- Focus on structural gaps, not stylistic preferences
+- A partial execution is not automatically incoherent — judge against the original problem
+- Mark as coherent if the core intent was achieved, even with minor gaps
+
+<output_schema>
+Respond with ONLY valid JSON in this exact structure:
+{
+  "coherent": true,
+  "assessment": "One paragraph assessing whether execution matched the plan and solved the problem",
+  "gaps": ["Specific planned work that was not completed or is missing"],
+  "recommendations": ["Actionable follow-up if gaps exist"]
 }
 </output_schema>`;
 
