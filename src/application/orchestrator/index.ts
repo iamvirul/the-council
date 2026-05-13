@@ -245,13 +245,16 @@ async function executeSteps(
     }
 
     // Build the Aide summary that the NEXT step's Executor will receive.
-    // Only set when there are actual Aide results to forward.
+    // Reset on every step — older summaries must not leak into steps that
+    // had no Aide delegation.
     if (aideResultsThisStep.length > 0) {
       previousAideSummary = buildAideSummary(step.id, aideResultsThisStep);
       logger.debug(
         { request_id: requestId, step_id: step.id, aide_tasks: aideResultsThisStep.length },
         'Aide results will be forwarded to next Executor step',
       );
+    } else {
+      previousAideSummary = undefined;
     }
 
     // ── Dynamic re-routing on blocked step ────────────────────────────────
@@ -320,9 +323,9 @@ async function runCoherenceCheck(
   const aideResults = session.aide_results;
   const stepFailures = session.executor_progress.step_failures ?? [];
 
-  // No Executor results and no Aide results means nothing was executed —
-  // skip the coherence check rather than asking Chancellor to review nothing.
-  if (executionResults.length === 0 && aideResults.length === 0) return;
+  // Skip only when there is truly nothing to review — failed/skipped steps
+  // are still meaningful signal for the Chancellor's coherence assessment.
+  if (executionResults.length === 0 && aideResults.length === 0 && stepFailures.length === 0) return;
 
   const planSummary = chancellorPlan.plan
     .map(s => `- [${s.id}] ${s.description} (${s.complexity})`)
