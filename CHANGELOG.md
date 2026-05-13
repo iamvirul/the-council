@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-13
+
+### Added
+- **Agent feedback loops** — closed two new inter-agent communication channels:
+  - **Loop 2 (Executor → Chancellor coherence check)** — after all execution steps complete, the Chancellor is re-invoked in review mode (Haiku model, 1 turn, no file tools) to compare the original plan against the actual execution summary. Returns a structured `ChancellorCoherenceCheck` with `coherent` flag, `assessment`, `gaps`, and `recommendations`. Stored on the session as `coherence_check` and rendered in the result summary under `## Chancellor Coherence Review`.
+  - **Loop 3 (Aide → Executor context forwarding)** — Aide results produced during a step are summarised and injected into the next Executor invocation as `aide_summary`. Prevents the Executor from re-doing work the Aide already completed. Summary is reset between steps so stale results do not leak across steps.
+- `ChancellorCoherenceCheck` interface in `types.ts` and `ChancellorCoherenceSchema` in `schemas.ts`.
+- `invokeChancellorCoherence()` in `src/application/chancellor/agent.ts` — dedicated entrypoint for the coherence review invocation with prompt-injection defence (plan and execution summary are wrapped in untrusted-data fences).
+- `MODEL_IDS.CHANCELLOR_REVIEW` (`claude-haiku-4-5`) and `MAX_TURNS.CHANCELLOR_REVIEW` (`1`) constants.
+- `CHANCELLOR_COHERENCE_PROMPT` system prompt constant for the review pass.
+- `recordCoherenceCheck()` on all three session store backends (`MemoryStore`, `FileStore`, `SQLiteStore`).
+- `aide_summary` optional field on `AgentInvokeOptions` — carries formatted Aide output into the next Executor prompt.
+- Unit tests for `invokeChancellorCoherence` parsing, error handling, and user message composition (5 new cases in `tests/unit/agents/chancellor.test.ts`).
+- Unit tests for Executor `aide_summary` injection and prompt ordering (4 new cases in `tests/unit/agents/executor.test.ts`).
+- Unit tests for `recordCoherenceCheck` on `MemoryStore` (1 new case in `tests/unit/state/memory-store.test.ts`).
+
+### Fixed
+- **Stale Aide summary leak** — `previousAideSummary` is now explicitly reset to `undefined` at the start of each step when no Aide output exists, preventing the previous step's summary from leaking into later Executor invocations.
+- **Coherence check skipped on partial failure** — the skip guard in `runCoherenceCheck` previously checked only `executionResults` and `aideResults`; it now also checks `stepFailures`, so the coherence review runs even when some steps failed with infrastructure errors.
+- **Prompt injection in coherence review** — the plan and execution summary passed to `invokeChancellorCoherence` are now wrapped in ` ```text ` fences with an explicit untrusted-data preamble, preventing injected instructions from influencing the Chancellor review.
+
+### Security
+- Bumped transitive dependencies to clear `npm audit`:
+  - `fast-uri` 3.1.0 → 3.1.2 (HIGH: ReDoS in URI parsing)
+  - `hono` → 4.12.18 (moderate)
+  - `ip-address` → 10.2.0 (moderate)
+  - `express-rate-limit` → 8.5.1 (moderate)
+
 ## [0.6.0] - 2026-05-05
 
 ### Added
@@ -156,7 +184,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Executor runs with explicit `permissionMode: 'acceptEdits'` rather than relying on inherited default
 - `@anthropic-ai/claude-agent-sdk` pinned to `^0.2.101` (no `latest` in production)
 
-[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/iamvirul/the-council/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/iamvirul/the-council/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/iamvirul/the-council/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/iamvirul/the-council/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/iamvirul/the-council/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/iamvirul/the-council/compare/v0.2.3...v0.3.0
