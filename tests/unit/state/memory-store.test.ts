@@ -180,6 +180,19 @@ describe('MemoryStore — state mutations', () => {
     expect(store.get(s.request_id).metrics.caveman_mode).toBe('full');
   });
 
+  it('recordCoherenceCheck() stores coherence_check on the session', () => {
+    const s = store.create('p');
+    store.recordCoherenceCheck(s.request_id, {
+      coherent: false,
+      assessment: 'Missing step 2',
+      gaps: ['Step 2 not executed'],
+      recommendations: ['Re-run step 2'],
+    });
+    const after = store.get(s.request_id);
+    expect(after.coherence_check?.coherent).toBe(false);
+    expect(after.coherence_check?.gaps).toEqual(['Step 2 not executed']);
+  });
+
   it('complete() sets phase=complete and records duration_ms', () => {
     const s = store.create('p');
     const started = Date.now() - 100;

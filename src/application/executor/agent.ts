@@ -15,6 +15,7 @@ import { logger } from '../../infra/logging/logger.js';
 export async function invokeExecutor(opts: AgentInvokeOptions): Promise<ExecutorResponse> {
   const parts: string[] = [`Task: ${opts.problem}`];
   if (opts.context) parts.push('', `Context (Chancellor's plan):`, opts.context);
+  if (opts.aide_summary) parts.push('', opts.aide_summary);
   if (opts.supervisor_feedback) parts.push('', opts.supervisor_feedback);
   const userMessage = parts.join('\n');
 

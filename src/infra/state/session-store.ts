@@ -11,6 +11,7 @@ import type {
   SessionPhase,
   ChancellorResponse,
   SupervisorVerdict,
+  ChancellorCoherenceCheck,
 } from '../../domain/models/types.js';
 
 export interface SessionStore {
@@ -27,6 +28,7 @@ export interface SessionStore {
   recordCavemanMode(requestId: string, mode: string): void;
   recordEvalRetry(requestId: string): void;
   recordStepFailure(requestId: string, stepId: string, error: string): void;
+  recordCoherenceCheck(requestId: string, check: ChancellorCoherenceCheck): void;
   complete(requestId: string, startedAt: number): void;
   fail(requestId: string, startedAt: number): void;
   list(): CouncilSession[];

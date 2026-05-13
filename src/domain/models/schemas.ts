@@ -60,6 +60,13 @@ export const SupervisorVerdictSchema = z.object({
   recommendation: z.string().max(2_000),
 });
 
+export const ChancellorCoherenceSchema = z.object({
+  coherent: z.boolean(),
+  assessment: z.string().max(5_000),
+  gaps: z.array(z.string().max(500)).max(20),
+  recommendations: z.array(z.string().max(500)).max(20),
+});
+
 export const AideResponseSchema = z.object({
   task_id: z.string().max(200),
   status: z.enum(['completed', 'failed', 'needs_clarification']),

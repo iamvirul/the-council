@@ -68,6 +68,15 @@ export interface AideResponse {
   };
 }
 
+// ─── Coherence check ─────────────────────────────────────────────────────────
+
+export interface ChancellorCoherenceCheck {
+  coherent: boolean;
+  assessment: string;
+  gaps: string[];
+  recommendations: string[];
+}
+
 // ─── Session / State ──────────────────────────────────────────────────────────
 
 export interface CouncilSession {
@@ -89,6 +98,11 @@ export interface CouncilSession {
   };
   aide_results: AideResponse[];
   supervisor_verdicts: SupervisorVerdict[];
+  /**
+   * Chancellor coherence check produced at the end of multi-step execution.
+   * Absent when the pipeline is trivial or simple (no Chancellor plan used).
+   */
+  coherence_check?: ChancellorCoherenceCheck;
   metrics: {
     /**
      * Raw count of agent invocations, including Supervisor reviews and every
@@ -147,4 +161,10 @@ export interface AgentInvokeOptions {
    * direct callers should leave this unset.
    */
   supervisor_feedback?: string;
+  /**
+   * Summary of Aide task results from the preceding Executor step.
+   * Passed forward so each Executor step knows what the Aide accomplished
+   * in the previous step rather than proceeding blind.
+   */
+  aide_summary?: string;
 }
