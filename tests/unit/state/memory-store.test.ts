@@ -44,12 +44,13 @@ function makeAide(taskId: string): AideResponse {
   };
 }
 
-function makeVerdict(subject: string, approved: boolean): SupervisorVerdict {
+function makeVerdict(subject: string, approved: boolean, score = 85): SupervisorVerdict {
   return {
     subject,
     subject_type: 'executor_step',
     approved,
     confidence: 'high',
+    score,
     flags: [],
     recommendation: '',
   };

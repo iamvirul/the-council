@@ -15,6 +15,7 @@ const VALID_VERDICT = {
   subject_type: 'executor_step',
   approved: true,
   confidence: 'high',
+  score: 90,
   flags: [],
   recommendation: 'ok',
 };
@@ -66,6 +67,28 @@ describe('invokeSupervisor — parsing', () => {
   it('throws SUPERVISOR_ERROR on schema violation (missing required field)', async () => {
     mockedRun.mockResolvedValueOnce(JSON.stringify({ ...VALID_VERDICT, approved: undefined }));
     await expect(invokeSupervisor(ctx)).rejects.toBeInstanceOf(CouncilError);
+  });
+
+  it('parses score and exposes it on the verdict', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify({ ...VALID_VERDICT, score: 72 }));
+    const v = await invokeSupervisor(ctx);
+    expect(v.score).toBe(72);
+  });
+
+  it('throws SUPERVISOR_ERROR when score is missing', async () => {
+    const { score: _score, ...noScore } = VALID_VERDICT;
+    mockedRun.mockResolvedValueOnce(JSON.stringify(noScore));
+    await expect(invokeSupervisor(ctx)).rejects.toMatchObject({ code: 'SUPERVISOR_ERROR' });
+  });
+
+  it('throws SUPERVISOR_ERROR when score is out of range (> 100)', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify({ ...VALID_VERDICT, score: 150 }));
+    await expect(invokeSupervisor(ctx)).rejects.toMatchObject({ code: 'SUPERVISOR_ERROR' });
+  });
+
+  it('throws SUPERVISOR_ERROR when score is a float', async () => {
+    mockedRun.mockResolvedValueOnce(JSON.stringify({ ...VALID_VERDICT, score: 85.5 }));
+    await expect(invokeSupervisor(ctx)).rejects.toMatchObject({ code: 'SUPERVISOR_ERROR' });
   });
 
   it('throws SUPERVISOR_ERROR when confidence is not one of the enum values', async () => {

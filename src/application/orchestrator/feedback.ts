@@ -35,6 +35,8 @@ export function sanitizeFeedbackText(text: string): string {
  */
 export function buildSupervisorFeedback(verdict: SupervisorVerdict): string {
   const lines = [FEEDBACK_START];
+  // Include score so the agent knows how far below the bar the previous attempt was.
+  lines.push(`Quality score: ${verdict.score}/100`);
   if (verdict.flags.length > 0) {
     lines.push('Flags:');
     for (const flag of verdict.flags) {

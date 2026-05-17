@@ -53,6 +53,14 @@ export interface SupervisorVerdict {
   subject_type: 'executor_step' | 'aide_task';
   approved: boolean;
   confidence: 'high' | 'medium' | 'low';
+  /**
+   * Numeric quality score 0–100.
+   * Rubric: correctness (40 pts) + completeness (30 pts) + intent alignment (30 pts).
+   * Assigned by the Supervisor on every review — independent of the approved flag.
+   * Used by the orchestrator's score gate (COUNCIL_MIN_SCORE) and surfaced in the
+   * quality summary at the end of each result.
+   */
+  score: number;
   flags: string[];
   recommendation: string;
 }
