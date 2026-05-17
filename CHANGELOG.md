@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-18
+
+### Added
+- **Numeric quality scores on Supervisor verdicts** — every Supervisor review now produces an integer `score` (0–100) alongside the boolean `approved`. Scoring rubric: correctness (40 pts) + completeness (30 pts) + intent alignment (30 pts). Scores are independent of the approval flag — a 75-point output can still pass if the task warrants it.
+- **`COUNCIL_MIN_SCORE` env var** — optional score gate (default: `0` = disabled). When set to a value 1–100, any Supervisor score below the threshold triggers the evaluation retry loop, identical to `approved: false`. Range `[0, 100]`; out-of-range values are clamped with a startup warning.
+- **Quality Summary in result output** — every orchestration result now includes a `## Quality Summary` section: average score, lowest-scoring step, total flags raised, and (when `COUNCIL_MIN_SCORE` is active) a pass/fail count against the threshold.
+- **`quality_summary` in `get_council_state`** — both the single-session and list views now include computed quality metrics (`avg_score`, `min_score`, `min_score_subject`, `total_flags`) when at least one Supervisor verdict exists.
+- **Score in Supervisor feedback** — when a retry is triggered, the feedback block now includes `Quality score: X/100` so the agent understands how far below the bar the previous attempt was.
+- `computeQualitySummary()` helper (exported from the orchestrator) — computes aggregate quality metrics from the raw `supervisor_verdicts` array on demand; no derived state stored on the session.
+- `score` field on `SupervisorVerdictSchema` — integer, clamped to `[0, 100]` at the Zod boundary so downstream arithmetic is always safe.
+- Startup validation for `COUNCIL_MIN_SCORE` in `src/index.ts` — mirrors the pattern used by `COUNCIL_AGENT_TIMEOUT_MS`.
+- 18 new unit tests: schema boundary checks for `score`, `computeQualitySummary` math (avg, min, flag count, edge cases), score inclusion in supervisor feedback, and score-gate behaviour in the eval loop.
+
+### Fixed
+- `routing.test.ts` and `eval-loop.test.ts` mocked `chancellor/agent.js` without `invokeChancellorCoherence`, causing CI failures when vitest's strict mock guard threw on the missing export. Both mocks now include a no-op stub for `invokeChancellorCoherence`.
+
 ## [0.7.0] - 2026-05-13
 
 ### Added
