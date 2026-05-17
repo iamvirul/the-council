@@ -9,6 +9,12 @@ import type {
 // vitest hoists vi.mock() above imports automatically.
 vi.mock('../../../src/application/chancellor/agent.js', () => ({
   invokeChancellor: vi.fn(),
+  invokeChancellorCoherence: vi.fn().mockResolvedValue({
+    coherent: true,
+    assessment: 'stub',
+    gaps: [],
+    recommendations: [],
+  }),
 }));
 vi.mock('../../../src/application/executor/agent.js', () => ({
   invokeExecutor: vi.fn(),
@@ -66,6 +72,7 @@ function makeVerdict(
     flags?: string[];
     recommendation?: string;
     subject_type?: 'executor_step' | 'aide_task';
+    score?: number;
   } = {},
 ): SupervisorVerdict {
   return {
@@ -73,6 +80,7 @@ function makeVerdict(
     subject_type: opts.subject_type ?? 'executor_step',
     approved,
     confidence: 'high',
+    score: opts.score ?? (approved ? 85 : 45),
     flags: opts.flags ?? [],
     recommendation: opts.recommendation ?? '',
   };

@@ -9,6 +9,12 @@ import type {
 // Mocks must be declared before the orchestrator imports them.
 vi.mock('../../../src/application/chancellor/agent.js', () => ({
   invokeChancellor: vi.fn(),
+  invokeChancellorCoherence: vi.fn().mockResolvedValue({
+    coherent: true,
+    assessment: 'stub',
+    gaps: [],
+    recommendations: [],
+  }),
 }));
 vi.mock('../../../src/application/executor/agent.js', () => ({
   invokeExecutor: vi.fn(),
@@ -94,6 +100,7 @@ function approve(id: string, subjectType: 'executor_step' | 'aide_task'): Superv
     subject_type: subjectType,
     approved: true,
     confidence: 'high',
+    score: 90,
     flags: [],
     recommendation: '',
   };
