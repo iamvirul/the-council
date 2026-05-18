@@ -699,9 +699,13 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
     lines.push(`## Quality Summary`);
     lines.push(`Average score: **${quality.avg_score}/100** | Lowest: **${quality.min_score}/100** (${quality.min_score_subject}) | Flags raised: **${quality.total_flags}**`);
     if (MIN_SCORE > 0) {
-      const gated = session.supervisor_verdicts.filter(v => v.score < MIN_SCORE);
-      if (gated.length > 0) {
-        lines.push(`Score-gate threshold: ${MIN_SCORE} — ${gated.length} output(s) triggered retries.`);
+      // Deduplicate by subject so a single output retried multiple times is
+      // counted as one, not once per verdict attempt.
+      const gatedSubjects = new Set(
+        session.supervisor_verdicts.filter(v => v.score < MIN_SCORE).map(v => v.subject),
+      );
+      if (gatedSubjects.size > 0) {
+        lines.push(`Score-gate threshold: ${MIN_SCORE} — ${gatedSubjects.size} output(s) triggered retries.`);
       } else {
         lines.push(`Score-gate threshold: ${MIN_SCORE} — all outputs passed.`);
       }

@@ -55,7 +55,8 @@ export const SupervisorVerdictSchema = z.object({
   subject_type: z.enum(['executor_step', 'aide_task']),
   approved: z.boolean(),
   confidence: z.enum(['high', 'medium', 'low']),
-  // Integer 0–100 — clamped at the schema boundary so downstream math is safe.
+  // Integer 0–100 — validated at parse time so downstream math is safe.
+  // Out-of-range values are rejected with a ZodError, not coerced.
   score: z.number().int().min(0).max(100),
   // Cap flags — prevents an injected Supervisor from flooding logs
   flags: z.array(z.string().max(500)).max(10),
