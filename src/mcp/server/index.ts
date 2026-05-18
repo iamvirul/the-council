@@ -5,6 +5,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const { version } = require('../../../package.json') as { version: string };
 import { orchestrate } from '../../application/orchestrator/index.js';
+import { computeQualitySummary } from '../../application/orchestrator/quality.js';
 import { invokeChancellor } from '../../application/chancellor/agent.js';
 import { invokeExecutor } from '../../application/executor/agent.js';
 import { invokeAide } from '../../application/aide/agent.js';
@@ -151,19 +152,27 @@ export async function startServer(): Promise<void> {
       try {
         if (session_id) {
           const session = stateStore.get(session_id);
+          const quality = computeQualitySummary(session.supervisor_verdicts);
+          const sessionWithQuality = quality !== null
+            ? { ...session, quality_summary: quality }
+            : session;
           return {
-            content: [{ type: 'text', text: JSON.stringify(session, null, 2) }],
+            content: [{ type: 'text', text: JSON.stringify(sessionWithQuality, null, 2) }],
           };
         }
 
-        const sessions = stateStore.list().map((s) => ({
-          request_id: s.request_id,
-          phase: s.phase,
-          created_at: s.created_at,
-          problem: s.problem.slice(0, 120) + (s.problem.length > 120 ? '…' : ''),
-          agents_invoked: s.metrics.agents_invoked,
-          total_agent_calls: s.metrics.total_agent_calls,
-        }));
+        const sessions = stateStore.list().map((s) => {
+          const quality = computeQualitySummary(s.supervisor_verdicts);
+          return {
+            request_id: s.request_id,
+            phase: s.phase,
+            created_at: s.created_at,
+            problem: s.problem.slice(0, 120) + (s.problem.length > 120 ? '…' : ''),
+            agents_invoked: s.metrics.agents_invoked,
+            total_agent_calls: s.metrics.total_agent_calls,
+            ...(quality !== null ? { quality_summary: quality } : {}),
+          };
+        });
 
         return {
           content: [{ type: 'text', text: JSON.stringify(sessions, null, 2) }],

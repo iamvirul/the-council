@@ -170,6 +170,7 @@ describe('SupervisorVerdictSchema', () => {
     subject_type: 'executor_step',
     approved: true,
     confidence: 'high',
+    score: 85,
     flags: [],
     recommendation: '',
   };
@@ -203,5 +204,22 @@ describe('SupervisorVerdictSchema', () => {
     expect(() =>
       SupervisorVerdictSchema.parse({ ...valid, recommendation: 'y'.repeat(2_001) }),
     ).toThrow();
+  });
+
+  it('rejects score above 100', () => {
+    expect(() => SupervisorVerdictSchema.parse({ ...valid, score: 101 })).toThrow();
+  });
+
+  it('rejects score below 0', () => {
+    expect(() => SupervisorVerdictSchema.parse({ ...valid, score: -1 })).toThrow();
+  });
+
+  it('rejects a float score', () => {
+    expect(() => SupervisorVerdictSchema.parse({ ...valid, score: 85.5 })).toThrow();
+  });
+
+  it('accepts boundary scores 0 and 100', () => {
+    expect(() => SupervisorVerdictSchema.parse({ ...valid, score: 0 })).not.toThrow();
+    expect(() => SupervisorVerdictSchema.parse({ ...valid, score: 100 })).not.toThrow();
   });
 });

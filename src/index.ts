@@ -84,6 +84,31 @@ if (rawTimeout !== undefined && rawTimeout.trim() !== '') {
   }
 }
 
+// Validate COUNCIL_MIN_SCORE early.
+// Mirrors the clamping logic in src/infra/config/min-score.ts.
+const rawMinScore = process.env['COUNCIL_MIN_SCORE'];
+if (rawMinScore !== undefined && rawMinScore.trim() !== '') {
+  const parsedScore = Number(rawMinScore);
+  if (!Number.isFinite(parsedScore) || !Number.isInteger(parsedScore)) {
+    process.stderr.write(
+      `Warning: invalid COUNCIL_MIN_SCORE="${rawMinScore}" — score gate disabled (using 0).\n` +
+      `Must be an integer in the range [0, 100].\n`,
+    );
+  } else if (parsedScore < 0) {
+    process.stderr.write(
+      `Warning: COUNCIL_MIN_SCORE="${rawMinScore}" is below 0 — will be clamped to 0 (gate disabled).\n`,
+    );
+  } else if (parsedScore > 100) {
+    process.stderr.write(
+      `Warning: COUNCIL_MIN_SCORE="${rawMinScore}" exceeds 100 — will be clamped to 100.\n`,
+    );
+  } else if (parsedScore > 0) {
+    process.stderr.write(
+      `Info: COUNCIL_MIN_SCORE=${parsedScore} — Supervisor outputs scoring below ${parsedScore}/100 will trigger a retry.\n`,
+    );
+  }
+}
+
 import { startServer } from './mcp/server/index.js';
 
 startServer().catch((err: unknown) => {

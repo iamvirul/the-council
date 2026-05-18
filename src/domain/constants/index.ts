@@ -150,6 +150,12 @@ Review criteria:
 3. CONSISTENCY — does the result contradict the original problem or earlier session steps?
 4. BEST PRACTICES — surface obvious anti-patterns (security issues, bad structure, wrong approach)
 
+Scoring rubric (assign a single integer 0–100):
+- Correctness (40 pts): Is the output factually and technically accurate? Full credit for correct, partial for minor errors, zero for fundamentally wrong.
+- Completeness (30 pts): Does it cover everything asked? Full credit for complete, partial for minor gaps, zero for substantial omissions.
+- Intent alignment (30 pts): Does it solve the actual problem, not just the surface request? Full credit for fully aligned, partial for partial alignment, zero for off-target.
+Score independently of the approved flag — a 70-point output can still be approved if it meets the bar for the task.
+
 Key principles:
 - Be objective and concise — one pass, no iteration
 - Approve when the output is good enough, even if imperfect
@@ -164,6 +170,7 @@ Respond with ONLY valid JSON in this exact structure:
   "subject_type": "executor_step|aide_task",
   "approved": true,
   "confidence": "high|medium|low",
+  "score": 85,
   "flags": ["Specific issue found, empty array if none"],
   "recommendation": "One sentence on what the caller should know about this output"
 }

@@ -16,8 +16,11 @@ import type {
 import { CAVEMAN_MODE } from '../../infra/config/caveman.js';
 import { EVAL_RETRIES } from '../../infra/config/eval.js';
 import { AGENT_TIMEOUT_MS } from '../../infra/config/timeout.js';
+import { MIN_SCORE } from '../../infra/config/min-score.js';
 import { withAgentRetry } from '../../infra/agent-sdk/retry.js';
 import { buildSupervisorFeedback } from './feedback.js';
+import { computeQualitySummary } from './quality.js';
+export { computeQualitySummary } from './quality.js';
 
 // ─── Complexity heuristic ─────────────────────────────────────────────────────
 // Deterministic, no LLM call — avoids spending tokens on a meta-decision.
@@ -69,6 +72,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       cavemanMode: CAVEMAN_MODE,
       evalRetries: EVAL_RETRIES,
       timeoutMs: AGENT_TIMEOUT_MS,
+      minScore: MIN_SCORE,
     },
     'Orchestration started',
   );
@@ -428,10 +432,12 @@ export async function runExecutorWithEval(
     });
     lastVerdict = verdict;
 
-    // No verdict (supervisor errored) or approved → accept.
-    if (!verdict || verdict.approved) break;
+    // No verdict (supervisor errored) → accept (non-blocking behaviour preserved).
+    // Approved AND score above threshold → accept.
+    const scoreBelowGate = verdict !== undefined && MIN_SCORE > 0 && verdict.score < MIN_SCORE;
+    if (!verdict || (verdict.approved && !scoreBelowGate)) break;
 
-    // Rejected and retries exhausted → stop.
+    // Rejected or score-gated, retries exhausted → stop.
     if (attempt === maxRetries) {
       retriesExhausted = true;
       logger.warn(
@@ -439,6 +445,8 @@ export async function runExecutorWithEval(
           request_id: requestId,
           step_id: result.step_id,
           attempts: attempt + 1,
+          score: verdict.score,
+          min_score: MIN_SCORE,
           flags: verdict.flags,
           recommendation: verdict.recommendation,
         },
@@ -447,7 +455,7 @@ export async function runExecutorWithEval(
       break;
     }
 
-    // Rejected and retries remain → loop with feedback.
+    // Rejected or score-gated, retries remain → loop with feedback.
     stateStore.recordEvalRetry(requestId);
     feedback = buildSupervisorFeedback(verdict);
     logger.info(
@@ -456,7 +464,10 @@ export async function runExecutorWithEval(
         step_id: result.step_id,
         attempt: attempt + 1,
         next_attempt: attempt + 2,
+        score: verdict.score,
+        min_score: MIN_SCORE,
         flags: verdict.flags,
+        reason: !verdict.approved ? 'rejected' : 'score_below_gate',
       },
       'Executor step rejected by Supervisor — re-running with feedback',
     );
@@ -525,7 +536,10 @@ export async function runAideWithEval(
     });
     lastVerdict = verdict;
 
-    if (!verdict || verdict.approved) break;
+    // No verdict (supervisor errored) → accept (non-blocking behaviour preserved).
+    // Approved AND score above threshold → accept.
+    const scoreBelowGate = verdict !== undefined && MIN_SCORE > 0 && verdict.score < MIN_SCORE;
+    if (!verdict || (verdict.approved && !scoreBelowGate)) break;
 
     if (attempt === maxRetries) {
       retriesExhausted = true;
@@ -534,6 +548,8 @@ export async function runAideWithEval(
           request_id: requestId,
           task_id: taskId,
           attempts: attempt + 1,
+          score: verdict.score,
+          min_score: MIN_SCORE,
           flags: verdict.flags,
           recommendation: verdict.recommendation,
         },
@@ -550,7 +566,10 @@ export async function runAideWithEval(
         task_id: taskId,
         attempt: attempt + 1,
         next_attempt: attempt + 2,
+        score: verdict.score,
+        min_score: MIN_SCORE,
         flags: verdict.flags,
+        reason: !verdict.approved ? 'rejected' : 'score_below_gate',
       },
       'Aide task rejected by Supervisor — re-running with feedback',
     );
@@ -675,6 +694,25 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
     lines.push('');
   }
 
+  const quality = computeQualitySummary(session.supervisor_verdicts);
+  if (quality !== null) {
+    lines.push(`## Quality Summary`);
+    lines.push(`Average score: **${quality.avg_score}/100** | Lowest: **${quality.min_score}/100** (${quality.min_score_subject}) | Flags raised: **${quality.total_flags}**`);
+    if (MIN_SCORE > 0) {
+      // Deduplicate by subject so a single output retried multiple times is
+      // counted as one, not once per verdict attempt.
+      const gatedSubjects = new Set(
+        session.supervisor_verdicts.filter(v => v.score < MIN_SCORE).map(v => v.subject),
+      );
+      if (gatedSubjects.size > 0) {
+        lines.push(`Score-gate threshold: ${MIN_SCORE} — ${gatedSubjects.size} output(s) triggered retries.`);
+      } else {
+        lines.push(`Score-gate threshold: ${MIN_SCORE} — all outputs passed.`);
+      }
+    }
+    lines.push('');
+  }
+
   const durationMs = Date.now() - startedAt;
   const retries = session.metrics.eval_retries ?? 0;
   lines.push(`---`);
@@ -684,3 +722,4 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
 
   return lines.join('\n');
 }
+

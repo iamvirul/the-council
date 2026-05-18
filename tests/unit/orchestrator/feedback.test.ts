@@ -13,6 +13,7 @@ function verdict(partial: Partial<SupervisorVerdict> = {}): SupervisorVerdict {
     subject_type: 'executor_step',
     approved: false,
     confidence: 'high',
+    score: 60,
     flags: [],
     recommendation: '',
     ...partial,
@@ -24,6 +25,11 @@ describe('buildSupervisorFeedback', () => {
     const out = buildSupervisorFeedback(verdict({ flags: ['x'], recommendation: 'y' }));
     expect(out.startsWith(FEEDBACK_START)).toBe(true);
     expect(out.endsWith(FEEDBACK_END)).toBe(true);
+  });
+
+  it('includes the quality score line so the agent knows how far below the bar it was', () => {
+    const out = buildSupervisorFeedback(verdict({ score: 42 }));
+    expect(out).toContain('Quality score: 42/100');
   });
 
   it('renders flags as bullet list', () => {
