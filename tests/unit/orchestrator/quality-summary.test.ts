@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeQualitySummary } from '../../../src/application/orchestrator/index.js';
+import { computeQualitySummary } from '../../../src/application/orchestrator/quality.js';
 import type { SupervisorVerdict } from '../../../src/domain/models/types.js';
 
 function verdict(subject: string, score: number, flags: string[] = []): SupervisorVerdict {

@@ -4,7 +4,8 @@ import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../../../package.json') as { version: string };
-import { orchestrate, computeQualitySummary } from '../../application/orchestrator/index.js';
+import { orchestrate } from '../../application/orchestrator/index.js';
+import { computeQualitySummary } from '../../application/orchestrator/quality.js';
 import { invokeChancellor } from '../../application/chancellor/agent.js';
 import { invokeExecutor } from '../../application/executor/agent.js';
 import { invokeAide } from '../../application/aide/agent.js';

@@ -19,6 +19,8 @@ import { AGENT_TIMEOUT_MS } from '../../infra/config/timeout.js';
 import { MIN_SCORE } from '../../infra/config/min-score.js';
 import { withAgentRetry } from '../../infra/agent-sdk/retry.js';
 import { buildSupervisorFeedback } from './feedback.js';
+import { computeQualitySummary } from './quality.js';
+export { computeQualitySummary } from './quality.js';
 
 // ─── Complexity heuristic ─────────────────────────────────────────────────────
 // Deterministic, no LLM call — avoids spending tokens on a meta-decision.
@@ -717,38 +719,3 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
   return lines.join('\n');
 }
 
-// ─── Quality summary helper ───────────────────────────────────────────────────
-// Computes aggregate quality metrics from all Supervisor verdicts recorded on
-// a session. Returns null when there are no verdicts (nothing to summarise).
-
-interface QualitySummary {
-  avg_score: number;
-  min_score: number;
-  min_score_subject: string;
-  total_flags: number;
-}
-
-export function computeQualitySummary(verdicts: SupervisorVerdict[]): QualitySummary | null {
-  if (verdicts.length === 0) return null;
-
-  let total = 0;
-  let min = 101;
-  let minSubject = '';
-  let flags = 0;
-
-  for (const v of verdicts) {
-    total += v.score;
-    flags += v.flags.length;
-    if (v.score < min) {
-      min = v.score;
-      minSubject = v.subject;
-    }
-  }
-
-  return {
-    avg_score: Math.round(total / verdicts.length),
-    min_score: min,
-    min_score_subject: minSubject,
-    total_flags: flags,
-  };
-}
