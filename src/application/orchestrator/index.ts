@@ -631,7 +631,8 @@ async function supervise(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildResultSummary(session: CouncilSession, startedAt: number): string {
+/** @internal Exported for unit tests. */
+export function buildResultSummary(session: CouncilSession, startedAt: number): string {
   const lines: string[] = [];
 
   if (session.chancellor_plan) {
