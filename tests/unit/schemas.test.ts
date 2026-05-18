@@ -222,4 +222,9 @@ describe('SupervisorVerdictSchema', () => {
     expect(() => SupervisorVerdictSchema.parse({ ...valid, score: 0 })).not.toThrow();
     expect(() => SupervisorVerdictSchema.parse({ ...valid, score: 100 })).not.toThrow();
   });
+
+  it('accepts a verdict with no score (score is optional)', () => {
+    const { score: _score, ...noScore } = valid;
+    expect(() => SupervisorVerdictSchema.parse(noScore)).not.toThrow();
+  });
 });

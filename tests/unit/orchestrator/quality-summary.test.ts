@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { computeQualitySummary } from '../../../src/application/orchestrator/quality.js';
 import type { SupervisorVerdict } from '../../../src/domain/models/types.js';
 
-function verdict(subject: string, score: number, flags: string[] = []): SupervisorVerdict {
+function verdict(subject: string, score: number | undefined, flags: string[] = []): SupervisorVerdict {
   return {
     subject,
     subject_type: 'executor_step',
-    approved: score >= 70,
+    approved: score === undefined || score >= 70,
     confidence: 'high',
     score,
     flags,
@@ -87,5 +87,26 @@ describe('computeQualitySummary', () => {
     expect(result?.min_score).toBe(0);
     expect(result?.min_score_subject).toBe('step-1');
     expect(result?.avg_score).toBe(40);
+  });
+
+  it('returns sentinel (-1) scores when no verdicts carry a score', () => {
+    const result = computeQualitySummary([
+      verdict('step-1', undefined, ['flag-a']),
+      verdict('step-2', undefined),
+    ]);
+    expect(result).not.toBeNull();
+    expect(result?.avg_score).toBe(-1);
+    expect(result?.min_score).toBe(-1);
+    expect(result?.total_flags).toBe(1);
+  });
+
+  it('counts flags from unscored verdicts alongside scored ones', () => {
+    const result = computeQualitySummary([
+      verdict('step-1', 80, ['flag-a']),
+      verdict('step-2', undefined, ['flag-b', 'flag-c']),
+    ]);
+    // avg/min only cover the scored verdict
+    expect(result?.avg_score).toBe(80);
+    expect(result?.total_flags).toBe(3);
   });
 });

@@ -56,11 +56,12 @@ export interface SupervisorVerdict {
   /**
    * Numeric quality score 0–100.
    * Rubric: correctness (40 pts) + completeness (30 pts) + intent alignment (30 pts).
-   * Assigned by the Supervisor on every review — independent of the approved flag.
-   * Used by the orchestrator's score gate (COUNCIL_MIN_SCORE) and surfaced in the
-   * quality summary at the end of each result.
+   * Optional — the Supervisor prompt requests this field but some model versions
+   * omit it. When absent, verdicts are still recorded and the boolean `approved`
+   * drives the eval loop; score-based gating and the Quality Summary only activate
+   * for verdicts that include a score.
    */
-  score: number;
+  score?: number;
   flags: string[];
   recommendation: string;
 }

@@ -15,19 +15,34 @@ export interface QualitySummary {
 
 /**
  * Computes aggregate quality metrics from all Supervisor verdicts recorded on
- * a session. Returns null when there are no verdicts (nothing to summarise).
+ * a session. Returns null when no verdicts have a score (score is optional —
+ * some model versions omit it; flag counts are still surfaced in that case via
+ * the total_flags field, but avg/min scores require at least one scored verdict).
  */
 export function computeQualitySummary(verdicts: SupervisorVerdict[]): QualitySummary | null {
   if (verdicts.length === 0) return null;
 
+  const scored = verdicts.filter((v): v is SupervisorVerdict & { score: number } => v.score !== undefined);
+
+  // Always count flags — even unscored verdicts contribute flag signal.
+  const totalFlags = verdicts.reduce((n, v) => n + v.flags.length, 0);
+
+  if (scored.length === 0) {
+    // Verdicts exist but none carry a score — surface flag count only.
+    return {
+      avg_score: -1,           // sentinel: score unavailable
+      min_score: -1,
+      min_score_subject: '',
+      total_flags: totalFlags,
+    };
+  }
+
   let total = 0;
   let min = 101;
   let minSubject = '';
-  let flags = 0;
 
-  for (const v of verdicts) {
+  for (const v of scored) {
     total += v.score;
-    flags += v.flags.length;
     if (v.score < min) {
       min = v.score;
       minSubject = v.subject;
@@ -35,9 +50,9 @@ export function computeQualitySummary(verdicts: SupervisorVerdict[]): QualitySum
   }
 
   return {
-    avg_score: Math.round(total / verdicts.length),
+    avg_score: Math.round(total / scored.length),
     min_score: min,
     min_score_subject: minSubject,
-    total_flags: flags,
+    total_flags: totalFlags,
   };
 }
