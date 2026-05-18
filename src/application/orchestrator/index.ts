@@ -434,7 +434,7 @@ export async function runExecutorWithEval(
 
     // No verdict (supervisor errored) → accept (non-blocking behaviour preserved).
     // Approved AND score above threshold → accept.
-    const scoreBelowGate = verdict !== undefined && MIN_SCORE > 0 && verdict.score < MIN_SCORE;
+    const scoreBelowGate = verdict !== undefined && MIN_SCORE > 0 && verdict.score !== undefined && verdict.score < MIN_SCORE;
     if (!verdict || (verdict.approved && !scoreBelowGate)) break;
 
     // Rejected or score-gated, retries exhausted → stop.
@@ -538,7 +538,7 @@ export async function runAideWithEval(
 
     // No verdict (supervisor errored) → accept (non-blocking behaviour preserved).
     // Approved AND score above threshold → accept.
-    const scoreBelowGate = verdict !== undefined && MIN_SCORE > 0 && verdict.score < MIN_SCORE;
+    const scoreBelowGate = verdict !== undefined && MIN_SCORE > 0 && verdict.score !== undefined && verdict.score < MIN_SCORE;
     if (!verdict || (verdict.approved && !scoreBelowGate)) break;
 
     if (attempt === maxRetries) {
@@ -697,18 +697,25 @@ function buildResultSummary(session: CouncilSession, startedAt: number): string 
   const quality = computeQualitySummary(session.supervisor_verdicts);
   if (quality !== null) {
     lines.push(`## Quality Summary`);
-    lines.push(`Average score: **${quality.avg_score}/100** | Lowest: **${quality.min_score}/100** (${quality.min_score_subject}) | Flags raised: **${quality.total_flags}**`);
-    if (MIN_SCORE > 0) {
-      // Deduplicate by subject so a single output retried multiple times is
-      // counted as one, not once per verdict attempt.
-      const gatedSubjects = new Set(
-        session.supervisor_verdicts.filter(v => v.score < MIN_SCORE).map(v => v.subject),
-      );
-      if (gatedSubjects.size > 0) {
-        lines.push(`Score-gate threshold: ${MIN_SCORE} — ${gatedSubjects.size} output(s) triggered retries.`);
-      } else {
-        lines.push(`Score-gate threshold: ${MIN_SCORE} — all outputs passed.`);
+    if (quality.avg_score >= 0) {
+      lines.push(`Average score: **${quality.avg_score}/100** | Lowest: **${quality.min_score}/100** (${quality.min_score_subject}) | Flags raised: **${quality.total_flags}**`);
+      if (MIN_SCORE > 0) {
+        // Deduplicate by subject so a single output retried multiple times is
+        // counted as one, not once per verdict attempt.
+        const gatedSubjects = new Set(
+          session.supervisor_verdicts
+            .filter(v => v.score !== undefined && v.score < MIN_SCORE)
+            .map(v => v.subject),
+        );
+        if (gatedSubjects.size > 0) {
+          lines.push(`Score-gate threshold: ${MIN_SCORE} — ${gatedSubjects.size} output(s) triggered retries.`);
+        } else {
+          lines.push(`Score-gate threshold: ${MIN_SCORE} — all outputs passed.`);
+        }
       }
+    } else {
+      // Verdicts recorded but no scores produced — surface flags only.
+      lines.push(`Flags raised: **${quality.total_flags}** (score unavailable — Supervisor did not produce a numeric score)`);
     }
     lines.push('');
   }

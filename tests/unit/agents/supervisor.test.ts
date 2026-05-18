@@ -69,16 +69,18 @@ describe('invokeSupervisor — parsing', () => {
     await expect(invokeSupervisor(ctx)).rejects.toBeInstanceOf(CouncilError);
   });
 
-  it('parses score and exposes it on the verdict', async () => {
+  it('parses score and exposes it on the verdict when present', async () => {
     mockedRun.mockResolvedValueOnce(JSON.stringify({ ...VALID_VERDICT, score: 72 }));
     const v = await invokeSupervisor(ctx);
     expect(v.score).toBe(72);
   });
 
-  it('throws SUPERVISOR_ERROR when score is missing', async () => {
+  it('accepts a verdict with no score field (score is optional)', async () => {
     const { score: _score, ...noScore } = VALID_VERDICT;
     mockedRun.mockResolvedValueOnce(JSON.stringify(noScore));
-    await expect(invokeSupervisor(ctx)).rejects.toMatchObject({ code: 'SUPERVISOR_ERROR' });
+    const v = await invokeSupervisor(ctx);
+    expect(v.score).toBeUndefined();
+    expect(v.approved).toBe(true);
   });
 
   it('throws SUPERVISOR_ERROR when score is out of range (> 100)', async () => {

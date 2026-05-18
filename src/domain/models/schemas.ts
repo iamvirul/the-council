@@ -55,9 +55,10 @@ export const SupervisorVerdictSchema = z.object({
   subject_type: z.enum(['executor_step', 'aide_task']),
   approved: z.boolean(),
   confidence: z.enum(['high', 'medium', 'low']),
-  // Integer 0–100 — validated at parse time so downstream math is safe.
-  // Out-of-range values are rejected with a ZodError, not coerced.
-  score: z.number().int().min(0).max(100),
+  // Integer 0–100 — optional because some model versions omit this field.
+  // When present, validated at parse time; out-of-range values are rejected.
+  // Score-gating and the Quality Summary only activate for verdicts that include it.
+  score: z.number().int().min(0).max(100).optional(),
   // Cap flags — prevents an injected Supervisor from flooding logs
   flags: z.array(z.string().max(500)).max(10),
   recommendation: z.string().max(2_000),
