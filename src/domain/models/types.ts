@@ -86,6 +86,32 @@ export interface ChancellorCoherenceCheck {
   recommendations: string[];
 }
 
+// ─── Debate mode ──────────────────────────────────────────────────────────────
+
+/**
+ * Critique produced by the Chancellor in critic mode during a debate round.
+ * `requires_revision: false` signals the critic is satisfied — the loop can
+ * exit early without consuming the remaining round budget.
+ */
+export interface PlanCritiqueResponse {
+  critique: string;
+  gaps: string[];
+  improvements: string[];
+  overall_quality: 'poor' | 'adequate' | 'good' | 'excellent';
+  requires_revision: boolean;
+}
+
+/**
+ * Record of one debate round — stored in the session so callers can inspect
+ * how many rounds ran and what each critique said.
+ */
+export interface DebateRound {
+  round: number;
+  critique: PlanCritiqueResponse;
+  /** Number of steps in the plan produced after revision (or the current plan if no revision). */
+  revised_steps: number;
+}
+
 // ─── Session / State ──────────────────────────────────────────────────────────
 
 export interface CouncilSession {
@@ -112,6 +138,11 @@ export interface CouncilSession {
    * Absent when the pipeline is trivial or simple (no Chancellor plan used).
    */
   coherence_check?: ChancellorCoherenceCheck;
+  /**
+   * Debate rounds run during the planning phase (only populated when
+   * COUNCIL_DEBATE_ROUNDS > 0 and complexity === 'complex').
+   */
+  debate_rounds?: DebateRound[];
   metrics: {
     /**
      * Raw count of agent invocations, including Supervisor reviews and every
@@ -129,6 +160,11 @@ export interface CouncilSession {
      * in this session. 0 means every agent output was approved on first pass.
      */
     eval_retries: number;
+    /**
+     * Number of debate rounds that actually ran (may be less than
+     * COUNCIL_DEBATE_ROUNDS when the critic signals early satisfaction).
+     */
+    debate_rounds_completed?: number;
   };
 }
 

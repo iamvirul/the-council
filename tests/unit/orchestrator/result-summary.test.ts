@@ -10,6 +10,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 vi.mock('../../../src/application/chancellor/agent.js', () => ({
   invokeChancellor: vi.fn(),
   invokeChancellorCoherence: vi.fn(),
+  invokeChancellorCritic: vi.fn(),
 }));
 vi.mock('../../../src/application/executor/agent.js', () => ({
   invokeExecutor: vi.fn(),
