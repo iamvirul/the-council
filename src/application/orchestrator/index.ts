@@ -1,4 +1,4 @@
-import { invokeChancellor, invokeChancellorCoherence } from '../chancellor/agent.js';
+import { invokeChancellor, invokeChancellorCoherence, invokeChancellorCritic } from '../chancellor/agent.js';
 import { invokeExecutor } from '../executor/agent.js';
 import { invokeAide } from '../aide/agent.js';
 import { invokeSupervisor } from '../supervisor/agent.js';
@@ -17,6 +17,7 @@ import { CAVEMAN_MODE } from '../../infra/config/caveman.js';
 import { EVAL_RETRIES } from '../../infra/config/eval.js';
 import { AGENT_TIMEOUT_MS } from '../../infra/config/timeout.js';
 import { MIN_SCORE } from '../../infra/config/min-score.js';
+import { DEBATE_ROUNDS } from '../../infra/config/debate.js';
 import { withAgentRetry } from '../../infra/agent-sdk/retry.js';
 import { buildSupervisorFeedback } from './feedback.js';
 import { computeQualitySummary } from './quality.js';
@@ -73,6 +74,7 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       evalRetries: EVAL_RETRIES,
       timeoutMs: AGENT_TIMEOUT_MS,
       minScore: MIN_SCORE,
+      debateRounds: DEBATE_ROUNDS,
     },
     'Orchestration started',
   );
@@ -123,7 +125,16 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
     stateStore.setPhase(request_id, 'planning');
     stateStore.recordAgentCall(request_id, 'chancellor');
 
-    const chancellorPlan = await invokeChancellor({ problem });
+    const initialPlan = await invokeChancellor({ problem });
+
+    // ── Debate loop (opt-in, DEBATE_ROUNDS > 0) ───────────────────────────────
+    // A critic reviews the initial plan; if it requests revision the Chancellor
+    // re-plans with the critique as context. Runs up to DEBATE_ROUNDS iterations
+    // but may exit early when the critic is satisfied.
+    const chancellorPlan = DEBATE_ROUNDS > 0
+      ? await runDebateLoop(request_id, problem, initialPlan)
+      : initialPlan;
+
     stateStore.setChancellorPlan(request_id, chancellorPlan);
 
     logger.info({ request_id, steps: chancellorPlan.plan.length }, 'Chancellor plan received');
@@ -174,6 +185,106 @@ export async function orchestrate(problem: string): Promise<OrchestrateResult> {
       err,
     );
   }
+}
+
+// ─── Debate loop ──────────────────────────────────────────────────────────────
+// Opt-in multi-pass planning: a critic reviews the Chancellor plan and, if it
+// finds problems, the Chancellor re-plans with the critique as context.
+//
+// Bounded by DEBATE_ROUNDS (env: COUNCIL_DEBATE_ROUNDS, default 0 = off).
+// Early exit: if the critic sets requires_revision=false, remaining rounds are
+// skipped — spending extra tokens on an already-solid plan is wasteful.
+//
+// Failures are non-blocking: a critic or revision failure is logged and the
+// loop skips that round rather than aborting the entire planning phase. The
+// last successful plan (which may be the initial plan) is always returned.
+
+async function runDebateLoop(
+  requestId: string,
+  problem: string,
+  initialPlan: Awaited<ReturnType<typeof invokeChancellor>>,
+): Promise<Awaited<ReturnType<typeof invokeChancellor>>> {
+  let currentPlan = initialPlan;
+
+  for (let round = 1; round <= DEBATE_ROUNDS; round++) {
+    logger.info({ request_id: requestId, round, total_rounds: DEBATE_ROUNDS }, 'Debate round started');
+
+    // ── Critic invocation ─────────────────────────────────────────────────────
+    let critique: Awaited<ReturnType<typeof invokeChancellorCritic>>;
+    try {
+      stateStore.recordAgentCall(requestId, 'chancellor');
+      critique = await invokeChancellorCritic({
+        problem,
+        plan_json: JSON.stringify(currentPlan, null, 2),
+        round,
+      });
+    } catch (err) {
+      logger.warn({ request_id: requestId, round, err }, 'Debate critic failed — skipping round');
+      break;
+    }
+
+    logger.info(
+      {
+        request_id: requestId,
+        round,
+        quality: critique.overall_quality,
+        requires_revision: critique.requires_revision,
+        gaps: critique.gaps.length,
+      },
+      'Debate critique received',
+    );
+
+    // Record critique before deciding whether to revise — the round is
+    // meaningful even if no revision follows (e.g. critic approved the plan).
+    const roundRecord = {
+      round,
+      critique,
+      revised_steps: currentPlan.plan.length, // updated below if revision succeeds
+    };
+
+    if (!critique.requires_revision) {
+      // Critic is satisfied — no revision needed, exit early.
+      stateStore.recordDebateRound(requestId, roundRecord);
+      logger.info(
+        { request_id: requestId, round, quality: critique.overall_quality },
+        'Debate: critic approved plan — stopping early',
+      );
+      break;
+    }
+
+    // ── Chancellor revision ───────────────────────────────────────────────────
+    try {
+      stateStore.recordAgentCall(requestId, 'chancellor');
+      const revisedPlan = await invokeChancellor({
+        problem,
+        context: JSON.stringify({
+          debate_round: round,
+          critique: {
+            overall_quality: critique.overall_quality,
+            gaps: critique.gaps,
+            improvements: critique.improvements,
+          },
+          instruction:
+            'Revise your plan to address the critic\'s gaps and improvements. ' +
+            'Keep steps that are already correct. Do not add unnecessary scope.',
+        }),
+      });
+
+      roundRecord.revised_steps = revisedPlan.plan.length;
+      currentPlan = revisedPlan;
+
+      logger.info(
+        { request_id: requestId, round, revised_steps: revisedPlan.plan.length },
+        'Debate: Chancellor revised plan',
+      );
+    } catch (err) {
+      logger.warn({ request_id: requestId, round, err }, 'Debate revision failed — keeping current plan');
+    }
+
+    stateStore.recordDebateRound(requestId, roundRecord);
+  }
+
+  return currentPlan;
 }
 
 // ─── Step execution engine ────────────────────────────────────────────────────
@@ -635,6 +746,25 @@ async function supervise(
 export function buildResultSummary(session: CouncilSession, startedAt: number): string {
   const lines: string[] = [];
 
+  if (session.debate_rounds && session.debate_rounds.length > 0) {
+    const rounds = session.debate_rounds;
+    const finalRound = rounds[rounds.length - 1];
+    const stoppedEarly = finalRound !== undefined && !finalRound.critique.requires_revision;
+    lines.push(`## Debate Summary (${rounds.length} round${rounds.length === 1 ? '' : 's'})`);
+    for (const r of rounds) {
+      lines.push(
+        `**Round ${r.round}** — quality: ${r.critique.overall_quality}` +
+        (r.critique.requires_revision ? '' : ' ✓ approved') +
+        ` | plan steps after: ${r.revised_steps}`,
+      );
+      if (r.critique.gaps.length > 0) {
+        lines.push(`Gaps identified: ${r.critique.gaps.join('; ')}`);
+      }
+    }
+    if (stoppedEarly) lines.push('Critic approved the plan — debate ended early.');
+    lines.push('');
+  }
+
   if (session.chancellor_plan) {
     lines.push(`## Chancellor's Analysis`);
     lines.push(session.chancellor_plan.analysis);
@@ -723,10 +853,16 @@ export function buildResultSummary(session: CouncilSession, startedAt: number): 
 
   const durationMs = Date.now() - startedAt;
   const retries = session.metrics.eval_retries ?? 0;
+  const debateRoundsCompleted = session.metrics.debate_rounds_completed ?? 0;
   lines.push(`---`);
-  lines.push(
-    `Session: ${session.request_id} | Agents: ${session.metrics.agents_invoked.join(', ')} | Duration: ${durationMs}ms | Retries: ${retries}`,
-  );
+  const footerParts = [
+    `Session: ${session.request_id}`,
+    `Agents: ${session.metrics.agents_invoked.join(', ')}`,
+    `Duration: ${durationMs}ms`,
+    `Retries: ${retries}`,
+  ];
+  if (debateRoundsCompleted > 0) footerParts.push(`Debate rounds: ${debateRoundsCompleted}`);
+  lines.push(footerParts.join(' | '));
 
   return lines.join('\n');
 }

@@ -6,6 +6,7 @@
 import type {
   CouncilSession,
   AgentRole,
+  DebateRound,
   ExecutorResponse,
   AideResponse,
   SessionPhase,
@@ -29,6 +30,7 @@ export interface SessionStore {
   recordEvalRetry(requestId: string): void;
   recordStepFailure(requestId: string, stepId: string, error: string): void;
   recordCoherenceCheck(requestId: string, check: ChancellorCoherenceCheck): void;
+  recordDebateRound(requestId: string, round: DebateRound): void;
   complete(requestId: string, startedAt: number): void;
   fail(requestId: string, startedAt: number): void;
   list(): CouncilSession[];

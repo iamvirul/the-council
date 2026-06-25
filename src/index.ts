@@ -109,6 +109,31 @@ if (rawMinScore !== undefined && rawMinScore.trim() !== '') {
   }
 }
 
+// Validate COUNCIL_DEBATE_ROUNDS early.
+// Mirrors the clamping logic in src/infra/config/debate.ts.
+const rawDebateRounds = process.env['COUNCIL_DEBATE_ROUNDS'];
+if (rawDebateRounds !== undefined && rawDebateRounds.trim() !== '') {
+  const parsedRounds = Number(rawDebateRounds);
+  if (!Number.isFinite(parsedRounds) || !Number.isInteger(parsedRounds)) {
+    process.stderr.write(
+      `Warning: invalid COUNCIL_DEBATE_ROUNDS="${rawDebateRounds}" — debate disabled (using 0).\n` +
+      `Must be a non-negative integer (0–3).\n`,
+    );
+  } else if (parsedRounds < 0) {
+    process.stderr.write(
+      `Warning: COUNCIL_DEBATE_ROUNDS="${rawDebateRounds}" is below 0 — will be clamped to 0 (debate disabled).\n`,
+    );
+  } else if (parsedRounds > 3) {
+    process.stderr.write(
+      `Warning: COUNCIL_DEBATE_ROUNDS="${rawDebateRounds}" exceeds max (3) — will be clamped to 3.\n`,
+    );
+  } else if (parsedRounds > 0) {
+    process.stderr.write(
+      `Info: COUNCIL_DEBATE_ROUNDS=${parsedRounds} — Chancellor plans will go through ${parsedRounds} critique-revise round(s) before execution.\n`,
+    );
+  }
+}
+
 import { startServer } from './mcp/server/index.js';
 
 startServer().catch((err: unknown) => {

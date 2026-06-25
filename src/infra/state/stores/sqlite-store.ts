@@ -9,6 +9,7 @@ import { homedir } from 'os';
 import type {
   CouncilSession,
   AgentRole,
+  DebateRound,
   ExecutorResponse,
   AideResponse,
   SessionPhase,
@@ -181,6 +182,13 @@ export class SQLiteStore implements SessionStore {
   recordCoherenceCheck(requestId: string, check: ChancellorCoherenceCheck): void {
     const s = this.get(requestId);
     s.coherence_check = check;
+    this.write(s);
+  }
+
+  recordDebateRound(requestId: string, round: DebateRound): void {
+    const s = this.get(requestId);
+    (s.debate_rounds ??= []).push(round);
+    s.metrics.debate_rounds_completed = (s.metrics.debate_rounds_completed ?? 0) + 1;
     this.write(s);
   }
 

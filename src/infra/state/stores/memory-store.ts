@@ -3,6 +3,7 @@
 import type {
   CouncilSession,
   AgentRole,
+  DebateRound,
   ExecutorResponse,
   AideResponse,
   SessionPhase,
@@ -104,6 +105,12 @@ export class MemoryStore implements SessionStore {
 
   recordCoherenceCheck(requestId: string, check: ChancellorCoherenceCheck): void {
     this.get(requestId).coherence_check = check;
+  }
+
+  recordDebateRound(requestId: string, round: DebateRound): void {
+    const s = this.get(requestId);
+    (s.debate_rounds ??= []).push(round);
+    s.metrics.debate_rounds_completed = (s.metrics.debate_rounds_completed ?? 0) + 1;
   }
 
   complete(requestId: string, startedAt: number): void {

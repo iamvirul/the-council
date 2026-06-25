@@ -64,6 +64,16 @@ export const SupervisorVerdictSchema = z.object({
   recommendation: z.string().max(2_000),
 });
 
+export const PlanCritiqueSchema = z.object({
+  // Overall narrative assessment — longer than individual flags but bounded
+  // so an adversarial agent can't use the critique block as an injection vector.
+  critique: z.string().max(5_000),
+  gaps: z.array(z.string().max(500)).max(20),
+  improvements: z.array(z.string().max(500)).max(20),
+  overall_quality: z.enum(['poor', 'adequate', 'good', 'excellent']),
+  requires_revision: z.boolean(),
+});
+
 export const ChancellorCoherenceSchema = z.object({
   coherent: z.boolean(),
   assessment: z.string().max(5_000),

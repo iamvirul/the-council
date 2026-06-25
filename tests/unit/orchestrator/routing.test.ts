@@ -15,6 +15,7 @@ vi.mock('../../../src/application/chancellor/agent.js', () => ({
     gaps: [],
     recommendations: [],
   }),
+  invokeChancellorCritic: vi.fn(),
 }));
 vi.mock('../../../src/application/executor/agent.js', () => ({
   invokeExecutor: vi.fn(),
